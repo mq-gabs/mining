@@ -23,11 +23,12 @@ import {
 import { randomSeed } from '../game/rng';
 import type { EndReason, PerkId, RunEvent, RunState, RunSummary } from '../game/types';
 import { createAdService, type AdService } from '../platform/ads';
-import { ProfileStore, SettingsStore } from '../platform/storage';
+import { ProfileStore, SettingsStore, type Settings } from '../platform/storage';
 import { flyGem, replayClass, showBanner } from './fx';
 import { GridRenderer, type DrawView } from './gridRenderer';
 import { isModalOpen, showModal, type ModalAction } from './modal';
 import { renderShop } from './shop';
+import { MusicEngine } from './music';
 import { Sounds } from './sounds';
 import { GEM_COLORS, TREASURE_COLOR } from './theme';
 import { TOOL_META } from './tools';
@@ -41,6 +42,8 @@ export class App {
   private store = new ProfileStore();
   private settings = new SettingsStore();
   private sounds = new Sounds();
+  private music = new MusicEngine(this.sounds.synth);
+  private soundSettings = this.settings.load();
   /** Undefined when the `ads` feature flag is off: no ad offers or interstitials at all. */
   private ads = createAdService();
   private profile: Profile = this.store.load();
@@ -62,15 +65,21 @@ export class App {
     $('perk-bar').addEventListener('click', () => this.showActivePerks());
     $('tool-bar').addEventListener('click', (e) => this.onToolButton(e));
     for (const btn of document.querySelectorAll('[data-mute]')) btn.addEventListener('click', () => this.toggleMute());
-    // Audio can only start from a user gesture; every tap makes sure it's running.
-    document.addEventListener('pointerdown', () => this.sounds.synth.unlock(), { capture: true });
+    $('btn-settings').addEventListener('click', () => this.showSettings());
+    // Audio can only start from a user gesture: the first tap starts the music, every tap keeps it running.
+    document.addEventListener('pointerdown', () => this.unlockAudio(), { capture: true });
+    document.addEventListener('keydown', () => this.unlockAudio(), { capture: true });
+    document.addEventListener('visibilitychange', () => this.sounds.synth.hold('hidden', document.hidden));
     // Generic click for plain buttons (buying, perks, tools and mute have their own sounds).
     document.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest('.btn');
       if (btn && !btn.matches('.buy-btn, .perk-card')) this.sounds.click();
     });
-    this.sounds.synth.muted = this.settings.load().muted;
+    this.applySoundSettings();
     this.renderMute();
+    // Try to start the menu music right away. Browsers only allow this when autoplay is permitted
+    // (e.g. the player has used the site before); otherwise it starts on the first tap or key press.
+    this.unlockAudio();
     this.showHub();
     if (import.meta.env.DEV) this.exposeDebugHook();
   }
@@ -95,16 +104,61 @@ export class App {
 
   // ---------- Sound ----------
 
+  private unlockAudio() {
+    this.sounds.synth.unlock();
+    this.music.start();
+  }
+
+  private applySoundSettings() {
+    const s = this.soundSettings;
+    this.sounds.synth.setMuted(s.muted);
+    this.sounds.synth.setVolumes({ music: s.musicVolume * CONFIG.music.mix, sfx: s.sfxVolume });
+  }
+
+  private updateSoundSettings(patch: Partial<Settings>) {
+    this.soundSettings = { ...this.soundSettings, ...patch };
+    this.settings.save(this.soundSettings);
+    this.applySoundSettings();
+  }
+
   private toggleMute() {
-    const muted = !this.sounds.synth.muted;
-    this.sounds.synth.muted = muted;
-    this.settings.save({ muted });
+    this.updateSoundSettings({ muted: !this.soundSettings.muted });
     this.renderMute();
     this.sounds.click();
   }
 
+  private showSettings() {
+    const s = this.soundSettings;
+    const slider = (id: string, label: string, value: number) => `
+      <label class="slider-row" for="${id}">
+        <span>${label}</span>
+        <input type="range" id="${id}" min="0" max="100" step="5" value="${Math.round(value * 100)}" />
+        <output id="${id}-out">${Math.round(value * 100)}%</output>
+      </label>`;
+    showModal(
+      `<h2>Sound</h2>
+       <div class="sliders">
+         ${slider('vol-music', '🎵 Music', s.musicVolume)}
+         ${slider('vol-sfx', '🔔 Effects', s.sfxVolume)}
+       </div>
+       ${s.muted ? '<p class="muted-note">Sound is muted. Unmute with 🔇 to hear changes.</p>' : ''}`,
+      [{ label: 'Done', primary: true, onClick: () => {} }],
+    );
+    const bind = (id: string, key: 'musicVolume' | 'sfxVolume') => {
+      const input = $<HTMLInputElement>(id);
+      input.addEventListener('input', () => {
+        $(`${id}-out`).textContent = `${input.value}%`;
+        this.updateSoundSettings({ [key]: Number(input.value) / 100 });
+      });
+      // Preview the effects level when the thumb is released.
+      if (key === 'sfxVolume') input.addEventListener('change', () => this.sounds.buy());
+    };
+    bind('vol-music', 'musicVolume');
+    bind('vol-sfx', 'sfxVolume');
+  }
+
   private renderMute() {
-    const muted = this.sounds.synth.muted;
+    const muted = this.soundSettings.muted;
     for (const btn of document.querySelectorAll<HTMLElement>('[data-mute]')) {
       btn.textContent = muted ? '🔇' : '🔊';
       btn.setAttribute('aria-label', muted ? 'Unmute sound' : 'Mute sound');
@@ -118,6 +172,7 @@ export class App {
     cancelAnimationFrame(this.rafId);
     $('screen-run').hidden = true;
     $('screen-hub').hidden = false;
+    this.music.setScene({ scene: 'hub' });
     this.renderHub();
   }
 
@@ -178,6 +233,7 @@ export class App {
       tierColors: hasPerk(run, 'prospector'),
       showChests: hasPerk(run, 'treasureSense'),
     };
+    this.music.setScene({ scene: 'run', depth: run.depth, lowEnergy: run.energy / run.mods.maxEnergy < LOW_ENERGY });
     this.updateHud();
   }
 
@@ -269,6 +325,7 @@ export class App {
     const { source, choices } = run.perkOffer;
     const subtitle = source === 'chest' ? 'You found a relic in the chest.' : `You reached floor ${run.depth}.`;
     if (source === 'floor') this.sounds.perkOffer();
+    this.music.perkChord();
     showModal(
       `<h2>Choose a perk</h2><p>${subtitle} Perks last until the end of this run.</p>`,
       choices.map((id) => ({
@@ -384,14 +441,14 @@ export class App {
   /** Plays an ad with game audio paused. Resolves undefined when ads are off. */
   private async playAd<T>(show: (ads: AdService) => Promise<T>): Promise<T | undefined> {
     if (!this.ads) return undefined;
-    this.sounds.synth.paused = true;
+    this.sounds.synth.hold('ad', true);
     try {
       return await show(this.ads);
     } catch (err) {
       console.warn('[deep-dig] ad failed', err);
       return undefined;
     } finally {
-      this.sounds.synth.paused = false;
+      this.sounds.synth.hold('ad', false);
     }
   }
 

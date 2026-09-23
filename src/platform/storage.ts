@@ -1,3 +1,4 @@
+import { CONFIG } from '../config';
 import { newProfile, parseProfile, type Profile } from '../game/progression';
 
 const PROFILE_KEY = 'deep-dig/profile';
@@ -43,6 +44,21 @@ export class ProfileStore {
 /** Device preferences, kept apart from game progress so resetting progress keeps them. */
 export interface Settings {
   muted: boolean;
+  /** Slider values, 0..1. */
+  musicVolume: number;
+  sfxVolume: number;
+}
+
+/** Builds valid settings from untrusted data, falling back to defaults per field. */
+export function parseSettings(raw: unknown): Settings {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const volume = (v: unknown, fallback: number) =>
+    typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback;
+  return {
+    muted: r.muted === true,
+    musicVolume: volume(r.musicVolume, CONFIG.music.defaultVolume.music),
+    sfxVolume: volume(r.sfxVolume, CONFIG.music.defaultVolume.sfx),
+  };
 }
 
 const SETTINGS_KEY = 'deep-dig/settings';
@@ -53,10 +69,9 @@ export class SettingsStore {
   load(): Settings {
     if (this.memory) return this.memory;
     try {
-      const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Partial<Settings>;
-      return { muted: raw.muted === true };
+      return parseSettings(JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}'));
     } catch {
-      return { muted: false };
+      return parseSettings({});
     }
   }
 

@@ -36,6 +36,16 @@ Current flags:
 | --- | --- | --- |
 | `ads` | on | Rewarded ads (+energy when out of energy, double gems on the summary) and interstitials. When off, no ad offers appear at all. |
 
+## Sound and music
+
+Everything you hear is generated with the Web Audio API; there are no audio files. `src/platform/audio.ts`
+is the synth (SFX and music buses, mute, volumes), `src/ui/sounds.ts` holds the effect recipes, and
+`src/ui/music.ts` is the procedural background music: a drone, pads, an arpeggio and echoing drips, all
+drawn from a minor pentatonic scale. The music adapts: brighter on the surface, darker every 5 floors,
+a heartbeat when energy is low, and a hopeful chord on perk choices. Tune it in `CONFIG.music`.
+The ⚙️ button on the hub has Music and Effects volume sliders (saved with the mute setting under
+`deep-dig/settings`).
+
 ## Ads
 
 The game only talks to ads through the `AdService` interface in `src/platform/ads.ts`. It currently uses

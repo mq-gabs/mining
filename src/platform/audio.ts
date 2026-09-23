@@ -23,20 +23,29 @@ export interface NoiseSpec {
 }
 
 const MIN_GAIN = 0.0001;
+/** Time constant (s) for volume/mute changes, short enough to feel instant but click-free. */
+const LEVEL_SMOOTHING = 0.03;
+
+/** Why audio is suspended right now (the context resumes only when there are none). */
+export type AudioHold = 'hidden' | 'ad';
 
 /**
  * Tiny Web Audio synthesizer: every sound is generated, nothing is loaded. Browsers only allow
  * audio after a user gesture, so `unlock()` must run from one (the app calls it on every pointerdown).
  * Any failure (no Web Audio, suspended context) makes it silent instead of throwing.
+ *
+ * Routing: sound effects → sfx bus ┐
+ *          music        → music bus ┴→ master (mute) → speakers
  */
 export class Synth {
   private ctx?: AudioContext;
   private master?: GainNode;
+  private sfxBus?: GainNode;
+  private musicBus?: GainNode;
   private noiseBuffer?: AudioBuffer;
-  /** The player's mute setting. */
-  muted = false;
-  /** Temporarily silent, e.g. while an ad plays (ad networks require game audio to stop). */
-  paused = false;
+  private holds = new Set<AudioHold>();
+  private muted = false;
+  private volumes = { music: 1, sfx: 1 };
 
   unlock() {
     try {
@@ -45,20 +54,63 @@ export class Synth {
         if (!AC) return;
         this.ctx = new AC();
         this.master = this.ctx.createGain();
-        this.master.gain.value = 0.5;
         this.master.connect(this.ctx.destination);
+        this.sfxBus = this.ctx.createGain();
+        this.sfxBus.connect(this.master);
+        this.musicBus = this.ctx.createGain();
+        this.musicBus.connect(this.master);
+        this.applyLevels();
       }
-      if (this.ctx.state === 'suspended') void this.ctx.resume();
+      if (this.ctx.state === 'suspended' && this.holds.size === 0) void this.ctx.resume();
     } catch {
       // No audio on this device; stay silent.
     }
   }
 
-  private live(): { ctx: AudioContext; out: GainNode } | undefined {
-    if (this.muted || this.paused || !this.ctx || !this.master || this.ctx.state !== 'running') return undefined;
-    return { ctx: this.ctx, out: this.master };
+  get isMuted(): boolean {
+    return this.muted;
   }
 
+  setMuted(muted: boolean) {
+    this.muted = muted;
+    this.applyLevels();
+  }
+
+  /** Bus levels, 0..1. `music` is the final music bus gain (the caller applies any mix factor). */
+  setVolumes(volumes: { music: number; sfx: number }) {
+    this.volumes = { ...volumes };
+    this.applyLevels();
+  }
+
+  /** Suspends all audio while any hold is active (tab hidden, ad playing); resumes when all clear. */
+  hold(reason: AudioHold, active: boolean) {
+    if (active) this.holds.add(reason);
+    else this.holds.delete(reason);
+    if (!this.ctx) return;
+    if (this.holds.size > 0) void this.ctx.suspend().catch(() => {});
+    else void this.ctx.resume().catch(() => {});
+  }
+
+  /** The context and music bus, for the music engine; undefined until unlocked. */
+  musicOutput(): { ctx: AudioContext; out: GainNode } | undefined {
+    if (!this.ctx || !this.musicBus) return undefined;
+    return { ctx: this.ctx, out: this.musicBus };
+  }
+
+  private applyLevels() {
+    if (!this.ctx || !this.master || !this.sfxBus || !this.musicBus) return;
+    const t = this.ctx.currentTime;
+    this.master.gain.setTargetAtTime(this.muted ? 0 : 1, t, LEVEL_SMOOTHING);
+    this.sfxBus.gain.setTargetAtTime(this.volumes.sfx, t, LEVEL_SMOOTHING);
+    this.musicBus.gain.setTargetAtTime(this.volumes.music, t, LEVEL_SMOOTHING);
+  }
+
+  private live(): { ctx: AudioContext; out: GainNode } | undefined {
+    if (this.muted || this.holds.size > 0 || !this.ctx || !this.sfxBus || this.ctx.state !== 'running') {
+      return undefined;
+    }
+    return { ctx: this.ctx, out: this.sfxBus };
+  }
   /** Gain node that rises in 5 ms and fades out over `dur`. */
   private envelope(ctx: AudioContext, out: AudioNode, start: number, dur: number, vol: number): GainNode {
     const g = ctx.createGain();

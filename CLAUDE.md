@@ -11,7 +11,7 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   synthesized sound (`platform/audio.ts` synth, recipes + event mapping in `ui/sounds.ts`), mute toggle,
   responsive pass (narrow phones, landscape side-by-side layout),
   M6 ads (`AdService` + `MockAdService` in `platform/ads.ts`, behind the `ads` feature flag).
-- All six milestones of the spec are done.
+- All six milestones of the spec are done. Extra: procedural adaptive background music (`ui/music.ts`).
 
 ## Commands
 
@@ -36,6 +36,10 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   with `hasPerk` where they apply. Upgrades are data-driven via `CONFIG.upgrades.items` + `UPGRADE_IDS`.
 - Browser services live in `src/platform/` (localStorage `ProfileStore` with in-memory fallback). Saves are
   parsed through `parseProfile`, which clamps and fills defaults. Bump `PROFILE_VERSION` on shape changes.
+- Music is procedural (`MusicEngine` in `ui/music.ts`): a lookahead scheduler on the `Synth`'s music bus.
+  The mood is a pure function of the scene (`moodFor`: hub, or run depth + low energy) and changes crossfade.
+  All music tuning lives in `CONFIG.music`. Audio "holds" (`Synth.hold('hidden' | 'ad')`) suspend the whole
+  context, so a hidden tab or an ad pauses music and SFX together.
 - Sounds are generated with Web Audio, never loaded from files. Device prefs (mute) live in `SettingsStore`,
   separate from the profile, so "Reset progress" keeps them. Sound, like other juice, hangs off `RunEvent`s.
 - Ads must stay behind the `AdService` interface so the mock can be swapped for the CrazyGames/Poki SDK

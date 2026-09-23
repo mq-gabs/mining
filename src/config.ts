@@ -127,6 +127,43 @@ export const CONFIG = {
     exhaustedKeepRatio: 0.5,
   },
 
+  /**
+   * Procedural background music (Web Audio, no files). Pitches are MIDI note numbers (57 = A3).
+   * Notes are always picked from `scale`, so they never clash; "degree" means an index into it.
+   */
+  music: {
+    /** Music bus level relative to SFX, so music always sits under the effects. */
+    mix: 0.35,
+    /** Slider defaults (0..1) before the player changes them. */
+    defaultVolume: { music: 0.7, sfx: 0.9 },
+    /** Mood changes (screen, depth, low energy) crossfade over this many seconds. */
+    crossfadeSec: 1,
+    /** Minor pentatonic: semitones above the root. */
+    scale: [0, 3, 5, 7, 10],
+    stepsPerBeat: 2,
+    beatsPerBar: 4,
+    /** Surface: brighter (higher root, open filter), slower and sparser. */
+    hub: { root: 57, bpm: 64, cutoff: 3400, arpChance: 0.3, arpWave: 'triangle' as OscillatorType },
+    /** First floors of a run. Deeper floors darken from here (see `darken`). */
+    run: { root: 55, bpm: 76, cutoff: 2200, arpChance: 0.45, arpWave: 'square' as OscillatorType },
+    /** Every `everyFloors` floors: root drops by `semitones` and the filter closes by `cutoffMult`. */
+    darken: { everyFloors: 5, semitones: 2, cutoffMult: 0.72, minCutoff: 420, minRoot: 43 },
+    /** Below the low-energy threshold: a heartbeat pulse and a slightly faster tempo. */
+    lowEnergy: { tempoMult: 1.15, heartbeatGain: 0.55, heartbeatHz: 52 },
+    layers: {
+      /** Continuous low root + fifth, slightly detuned against each other. Sine keeps it soft (no buzzy harmonics). */
+      drone: { gain: 0.14, detuneCents: 7, octave: -1, wave: 'sine' as OscillatorType },
+      /** Slow-swelling chord of three scale degrees, every `everyBars` bars. */
+      pad: { gain: 0.07, everyBars: 2, attackSec: 1.6, releaseSec: 2.6 },
+      /** Retro pluck doing a random walk through the scale (`maxLeap` degrees per note). */
+      arp: { gain: 0.06, octave: 1, maxLeap: 2, degreeRange: 8, durSec: 0.28 },
+      /** Rare high blips with an echo (delay + feedback), like water drips. */
+      drip: { gain: 0.06, chance: 0.05, octave: 2, delaySec: 0.34, feedback: 0.45 },
+    },
+    /** Hopeful chord on the perk screen: the relative major triad (+3 semitones) with its octave. */
+    perkChord: { gain: 0.12, durSec: 2.2, semitones: [3, 7, 10, 15] },
+  },
+
   /** Ad rewards and pacing (only when the `ads` feature flag is on; see `src/flags.ts`). */
   ads: {
     /** Rewarded ad when out of energy, once per run. */
