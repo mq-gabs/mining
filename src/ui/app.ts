@@ -17,6 +17,7 @@ import {
   endRun,
   grantAdEnergy,
   tapCell,
+  tickRun,
   useTool,
   type ActionResult,
 } from '../game/run';
@@ -37,6 +38,10 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 
 /** Low-energy warning threshold, as a share of max energy. */
 const LOW_ENERGY = 0.2;
+/** The Rush meter glows above this level, so the player knows a Rush is close. */
+const MOMENTUM_HOT = 0.8;
+/** Longest frame the Rush clock takes in one step, so a hitch doesn't drain the meter in a jump. */
+const MAX_TICK_MS = 100;
 
 export class App {
   private store = new ProfileStore();
@@ -48,11 +53,12 @@ export class App {
   private ads = createAdService();
   private profile: Profile = this.store.load();
   private run?: RunState;
-  private view: DrawView = { hints: [], tierColors: false, showChests: false };
+  private view: DrawView = { hints: [], tierColors: false, showChests: false, rush: false };
   /** Tool the next grid tap will use; undefined means the pickaxe. */
   private armed?: ToolId;
   private renderer: GridRenderer;
   private rafId = 0;
+  private lastFrame = 0;
   /** A `?seed=123` URL param forces the first run's seed (for reproducing bugs). */
   private forcedSeed = parseSeedParam();
 
@@ -98,6 +104,7 @@ export class App {
         },
         tap: (idx: number) => app.run && app.apply(tapCell(app.run, idx)),
         tool: (tool: ToolId, idx: number) => app.run && app.apply(useTool(app.run, tool, idx)),
+        tick: (ms: number) => app.run && app.apply(tickRun(app.run, ms)),
         hints: () => app.view.hints,
       },
     });
@@ -217,15 +224,39 @@ export class App {
     $('screen-hub').hidden = true;
     $('screen-run').hidden = false;
     this.armed = undefined;
+    // A banner left with its `show` class would replay its animation when the run screen is shown again.
+    for (const id of ['floor-banner', 'rush-banner']) {
+      $(id).classList.remove('show');
+      $(id).hidden = true;
+    }
     this.setRun(createRun(seed, modifiersFromProfile(this.profile)));
-    this.loop();
+    this.lastFrame = performance.now();
+    this.loop(this.lastFrame);
     showBanner($('floor-banner'), 'Floor 1');
   }
 
-  private loop = () => {
-    if (this.run) this.renderer.draw(this.run.floor, this.view, performance.now());
+  private loop = (now: number) => {
+    const dt = Math.min(MAX_TICK_MS, now - this.lastFrame);
+    this.lastFrame = now;
+    if (this.run && dt > 0 && this.canTick(now)) this.tick(dt);
+    if (this.run) {
+      this.renderMomentum(this.run);
+      this.renderer.draw(this.run.floor, this.view, now);
+    }
     this.rafId = requestAnimationFrame(this.loop);
   };
+
+  /** Rush time only passes while the player can tap: no modal, tab visible, no floor slide. */
+  private canTick(now: number): boolean {
+    return this.run?.status === 'playing' && !isModalOpen() && !document.hidden && !this.renderer.isSliding(now);
+  }
+
+  /** Lets play time pass. Plain drain/countdown frames skip `apply` (no HUD rebuild every frame). */
+  private tick(dt: number) {
+    const result = tickRun(this.run!, dt);
+    if (result.events.length) this.apply(result);
+    else this.run = result.run;
+  }
 
   private setRun(run: RunState) {
     this.run = run;
@@ -233,8 +264,14 @@ export class App {
       hints: computeHints(run.floor),
       tierColors: hasPerk(run, 'prospector'),
       showChests: hasPerk(run, 'treasureSense'),
+      rush: !!run.rush,
     };
-    this.music.setScene({ scene: 'run', depth: run.depth, lowEnergy: run.energy / run.mods.maxEnergy < LOW_ENERGY });
+    this.music.setScene({
+      scene: 'run',
+      depth: run.depth,
+      lowEnergy: run.energy / run.mods.maxEnergy < LOW_ENERGY,
+      rush: !!run.rush,
+    });
     this.updateHud();
   }
 
@@ -244,7 +281,7 @@ export class App {
     if (run === prev || !prev) return;
     if (events.some((e) => e.type === 'descend')) this.armed = undefined;
     this.setRun(run);
-    this.renderer.handleEvents(run.floor, events, performance.now());
+    this.renderer.handleEvents(run.floor, events, performance.now(), !!run.rush);
     this.sounds.playEvents(events, prev, run, LOW_ENERGY);
     this.playHudEffects(events, prev, run);
     this.onEvents(events);
@@ -266,6 +303,7 @@ export class App {
         for (let i = 0; i < 3; i++) flyGem(from, counter, TREASURE_COLOR, 12, i * 40, bump);
       }
       if (e.type === 'descend') showBanner($('floor-banner'), `Floor ${e.depth}`);
+      if (e.type === 'rushStart') showBanner($('rush-banner'), 'RUSH!');
     }
     if (run.energy > prev.energy) replayClass($('energy'), 'gain');
     else if (prev.energy - run.energy > CONFIG.energy.tapCost) replayClass($('energy'), 'drain');
@@ -401,8 +439,20 @@ export class App {
     $('energy-fill').style.width = `${Math.max(0, Math.min(1, ratio)) * 100}%`;
     $('energy-text').textContent = `⚡ ${run.energy} / ${run.mods.maxEnergy}`;
     $('energy').classList.toggle('low', ratio < LOW_ENERGY);
+    this.renderMomentum(run);
     this.renderPerkBar(run);
     this.renderToolBar(run);
+  }
+
+  /** The Rush meter, or during a Rush the countdown (the same bar, emptying from full). */
+  private renderMomentum(run: RunState) {
+    const level = run.rush ? run.rush.msLeft / (CONFIG.rush.durationSec * 1000) : run.momentum;
+    const pct = Math.max(0, Math.min(1, level)) * 100;
+    const meter = $('momentum');
+    $('momentum-fill').style.width = `${pct}%`;
+    meter.classList.toggle('rush', !!run.rush);
+    meter.classList.toggle('hot', !run.rush && run.momentum >= MOMENTUM_HOT);
+    meter.setAttribute('aria-valuenow', String(Math.round(pct)));
   }
 
   private renderToolBar(run: RunState) {

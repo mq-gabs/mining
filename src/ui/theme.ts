@@ -7,6 +7,18 @@ export const BLOCK_COLORS: Record<BlockType, { top: string; bottom: string; spec
   obsidian: { top: '#3b2a58', bottom: '#150e24', speck: 'rgba(190,140,255,0.25)' },
 };
 
+/**
+ * Block colours during a Rush: all gold, but each type keeps its light/dark place (dirt brightest,
+ * obsidian darkest) so they still read apart.
+ */
+export const RUSH_BLOCK_COLORS: Record<BlockType, { top: string; bottom: string; speck: string }> = {
+  dirt: { top: '#ffd766', bottom: '#d49a24', speck: 'rgba(120,70,0,0.3)' },
+  stone: { top: '#e8b845', bottom: '#a8761a', speck: 'rgba(90,50,0,0.32)' },
+  hard: { top: '#bf8a28', bottom: '#7a5210', speck: 'rgba(255,230,160,0.22)' },
+  obsidian: { top: '#8c5a16', bottom: '#452806', speck: 'rgba(255,210,120,0.28)' },
+};
+export const RUSH_COLOR = '#ffd24a';
+
 export const GEM_COLORS: Record<GemTier, string> = {
   quartz: '#f4f1ea',
   amethyst: '#b875ff',

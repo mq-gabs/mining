@@ -23,7 +23,7 @@ describe('music scale', () => {
 });
 
 describe('music moods', () => {
-  const run = (depth: number, lowEnergy = false) => moodFor({ scene: 'run', depth, lowEnergy });
+  const run = (depth: number, lowEnergy = false) => moodFor({ scene: 'run', depth, lowEnergy, rush: false });
 
   it('hub is brighter and slower than a run', () => {
     const hub = moodFor({ scene: 'hub' });

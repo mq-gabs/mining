@@ -490,6 +490,42 @@ body {
   text-shadow: 0 0 3px rgba(0, 0, 0, 0.9), 0 1px 1px rgba(0, 0, 0, 0.8);
   font-variant-numeric: tabular-nums;
 }
+/* Rush meter: fills with momentum, then turns into the Rush countdown. */
+.momentum {
+  position: relative;
+  height: 6px;
+  margin-top: -4px;
+  border-radius: 999px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.momentum-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #b8801c, #ffd24a);
+  transition: width 120ms linear;
+}
+.momentum.hot {
+  animation: momentum-hot 600ms ease-in-out infinite;
+}
+.momentum.rush {
+  box-shadow: 0 0 8px rgba(255, 210, 74, 0.8);
+}
+.momentum.rush .momentum-fill {
+  /* The countdown is updated every frame. */
+  transition: none;
+  background: linear-gradient(90deg, #fff1b8, #ffd24a);
+}
+.floor-banner.rush-banner {
+  background: linear-gradient(180deg, #ffe07a, #e0a126);
+  border-color: #fff1b8;
+  color: #3a2200;
+  font-size: 34px;
+  letter-spacing: 0.1em;
+  box-shadow: 0 0 24px rgba(255, 210, 74, 0.7);
+}
 .grid-wrap {
   flex: 1;
   min-height: 0;
@@ -809,6 +845,11 @@ body {
     transform: translateX(-3px);
   }
 }
+@keyframes momentum-hot {
+  50% {
+    box-shadow: 0 0 0 2px rgba(255, 210, 74, 0.35), 0 0 10px rgba(255, 210, 74, 0.85);
+  }
+}
 /* Slides in from above (we're going down) and fades out; the game stays playable underneath. */
 @keyframes banner {
   0% {
@@ -826,8 +867,12 @@ body {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .energy.low {
+  .energy.low,
+  .momentum.hot {
     animation: none;
+  }
+  .momentum.hot {
+    box-shadow: 0 0 8px rgba(255, 210, 74, 0.8);
   }
 }
 /* ---------- Ads ---------- */

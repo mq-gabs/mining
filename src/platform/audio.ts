@@ -91,6 +91,11 @@ export class Synth {
     else void this.ctx.resume().catch(() => {});
   }
 
+  /** The shared white-noise buffer (for the music's hi-hats too); undefined until unlocked. */
+  sharedNoise(): AudioBuffer | undefined {
+    return this.ctx ? this.noise1s(this.ctx) : undefined;
+  }
+
   /** The context and music bus, for the music engine; undefined until unlocked. */
   musicOutput(): { ctx: AudioContext; out: GainNode } | undefined {
     if (!this.ctx || !this.musicBus) return undefined;

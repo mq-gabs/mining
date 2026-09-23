@@ -129,6 +129,29 @@ export const CONFIG = {
   },
 
   /**
+   * Rush: pickaxe breaks fill a momentum meter (0..1) that always drains. When it's full, a Rush starts:
+   * for `durationSec` taps are free and the pickaxe hits harder. Both carry over between floors.
+   */
+  rush: {
+    /** Momentum added per block broken by the pickaxe (or Tremor), by block type. Tools add nothing. */
+    fill: { dirt: 0.08, stone: 0.1, hard: 0.13, obsidian: 0.17 } satisfies Record<BlockType, number>,
+    /**
+     * Each Rush already had this run multiplies the fill by this, so a player who breaks a block on
+     * every tap can't chain Rushes forever (it would make runs endless). Rushes per run are finite.
+     */
+    fillDecay: 0.5,
+    /** Momentum lost per second, always (no idle delay). */
+    drainPerSec: 0.08,
+    /**
+     * Kept short: free taps compound through the upgrade economy (the spec's 7 s pushed the sim bot's
+     * run 10 from floor 12 to 54). See CLAUDE.md.
+     */
+    durationSec: 5,
+    /** Pickaxe power multiplier during a Rush (which can also mine any block, reachable or not). */
+    powerMult: 2,
+  },
+
+  /**
    * Procedural background music (Web Audio, no files). Pitches are MIDI note numbers (57 = A3).
    * Notes are always picked from `scale`, so they never clash; "degree" means an index into it.
    */
@@ -160,6 +183,26 @@ export const CONFIG = {
       arp: { gain: 0.06, octave: 1, maxLeap: 2, degreeRange: 8, durSec: 0.28 },
       /** Rare high blips with an echo (delay + feedback), like water drips. */
       drip: { gain: 0.06, chance: 0.05, octave: 2, delaySec: 0.34, feedback: 0.45 },
+    },
+    /**
+     * Rush track: fast and bright, four-on-the-floor. Replaces every other mood during a Rush, with a
+     * short crossfade. The root is fixed (it doesn't darken with depth). No drone, pad or drips.
+     */
+    rush: {
+      root: 57,
+      bpm: 150,
+      crossfadeSec: 0.3,
+      /** Filter over the lead arp (open). */
+      cutoff: 6000,
+      arpWave: 'square' as OscillatorType,
+      /** Sine with a fast pitch drop, on every beat. */
+      kick: { gain: 0.5, fromHz: 150, toHz: 45, durSec: 0.16 },
+      /** Highpassed noise bursts on the off-beats. */
+      hat: { gain: 0.12, hz: 7000, durSec: 0.045 },
+      /** Root and fifth in eighth notes, through a lowpass. */
+      bass: { gain: 0.16, octave: -1, cutoff: 900, wave: 'sawtooth' as OscillatorType, durSec: 0.17 },
+      /** Lead arp on every step, an octave above the run arp. */
+      arp: { gain: 0.05, octave: 2, durSec: 0.14 },
     },
     /** Hopeful chord on the perk screen: the relative major triad (+3 semitones) with its octave. */
     perkChord: { gain: 0.12, durSec: 2.2, semitones: [3, 7, 10, 15] },

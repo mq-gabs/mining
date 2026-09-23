@@ -5,7 +5,7 @@ import { contentChanceForDepth, generateFloor } from './floor';
 import { computeHints } from './hints';
 import { availablePerks, PERK_IDS, rollPerkOffer } from './perks';
 import { Rng } from './rng';
-import { choosePerk, createRun, descend, tapCell } from './run';
+import { choosePerk, createRun, descend, tapCell, tickRun } from './run';
 import type { Content, PerkId, RunState } from './types';
 
 /** All-dirt floor, no contents except stairs moved out of the way (bottom-right corner). */
@@ -218,6 +218,8 @@ describe('perks', () => {
       const stairs = f.cells.findIndex((c) => c.open && c.content.kind === 'stairs');
       const hints = computeHints(f);
       run = tapCell(run, stairs >= 0 ? stairs : Math.max(...hints.map((h, i) => (h ? i : -1)))).run;
+      // A quick player (~3 taps a second): the Rush timer and meter drain run in play time.
+      run = tickRun(run, 300).run;
     }
     expect(run.status).toBe('outOfEnergy');
   });

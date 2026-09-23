@@ -8,6 +8,8 @@ const BLOCK_PITCH: Record<BlockType, number> = { dirt: 700, stone: 1500, hard: 2
 const GEM_PITCH: Record<GemTier, number> = { quartz: 880, amethyst: 988, sapphire: 1175, ruby: 1319, diamond: 1568 };
 /** At most this many gem dings per action (a big blast shouldn't be a wall of noise). */
 const MAX_DINGS = 5;
+/** Rush breaks rise in pitch with the combo, up to this many steps. */
+const MAX_COMBO_PITCH = 12;
 
 /** Plays each note of a chord with a short gap, like an arpeggio. */
 function arpeggio(s: Synth, freqs: number[], gap: number, type: OscillatorType, vol: number, dur = 0.18) {
@@ -23,9 +25,29 @@ export class Sounds {
     this.synth.tone({ freq: 140, to: 70, dur: 0.05, type: 'square', vol: 0.06 });
   }
 
-  break(block: BlockType) {
-    this.synth.noise({ dur: 0.16, freq: BLOCK_PITCH[block] * 1.5, to: 250, vol: 0.45 });
-    this.synth.tone({ freq: 320, to: 110, dur: 0.1, vol: 0.25 });
+  /** `combo` (during a Rush) pitches the break up a little per block, with a cap. */
+  break(block: BlockType, combo = 0) {
+    const up = 1 + 0.04 * Math.min(combo, MAX_COMBO_PITCH);
+    this.synth.noise({ dur: 0.16, freq: BLOCK_PITCH[block] * 1.5 * up, to: 250 * up, vol: 0.45 });
+    this.synth.tone({ freq: 320 * up, to: 110 * up, dur: 0.1, vol: 0.25 });
+  }
+
+  /** Soft tick when the Rush meter fills; higher as it gets fuller (`level` 0..1). */
+  momentum(level: number) {
+    this.synth.tone({ freq: 600 * 2 ** level, dur: 0.04, type: 'triangle', vol: 0.05, delay: 0.03 });
+  }
+
+  /** Rising sweep, then a bright chord stab. */
+  rushStart() {
+    this.synth.noise({ dur: 0.35, filter: 'bandpass', freq: 400, to: 5000, q: 2, vol: 0.35 });
+    this.synth.tone({ freq: 220, to: 880, dur: 0.3, type: 'sawtooth', vol: 0.08 });
+    for (const freq of [880, 1109, 1319, 1760]) this.synth.tone({ freq, dur: 0.35, type: 'square', vol: 0.05, delay: 0.28 });
+  }
+
+  /** Short falling whoosh. */
+  rushEnd() {
+    this.synth.noise({ dur: 0.4, filter: 'bandpass', freq: 3000, to: 300, q: 1.5, vol: 0.3 });
+    this.synth.tone({ freq: 660, to: 220, dur: 0.3, type: 'triangle', vol: 0.1 });
   }
 
   /** Rising ding; higher tiers are higher, and the top tiers add a shimmer. `n` staggers a combo upward. */
@@ -157,7 +179,7 @@ export class Sounds {
     else {
       const brk = events.find((e) => e.type === 'break');
       const hit = events.find((e) => e.type === 'hit');
-      if (brk) this.break(brk.block);
+      if (brk) this.break(brk.block, brk.combo);
       else if (hit) this.hit(block(hit.idx));
     }
     let dings = 0;
@@ -180,6 +202,15 @@ export class Sounds {
           break;
         case 'gas':
           this.gas(e.masked);
+          break;
+        case 'momentum':
+          this.momentum(e.level);
+          break;
+        case 'rushStart':
+          this.rushStart();
+          break;
+        case 'rushEnd':
+          this.rushEnd();
           break;
         case 'caveIn':
           this.caveIn();

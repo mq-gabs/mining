@@ -47,12 +47,16 @@
             <div class="energy-fill" id="energy-fill"></div>
             <span class="energy-text" id="energy-text">⚡ 50 / 50</span>
           </div>
+          <div class="momentum" id="momentum" role="meter" aria-label="Rush meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="momentum-fill" id="momentum-fill"></div>
+          </div>
           <button class="perk-bar empty" id="perk-bar" aria-label="Active perks"></button>
         </header>
         <div class="grid-wrap" id="grid-wrap">
           <canvas id="grid"></canvas>
           <div class="aim-hint" id="aim-hint" hidden></div>
           <div class="floor-banner" id="floor-banner" hidden></div>
+          <div class="floor-banner rush-banner" id="rush-banner" hidden></div>
         </div>
         <footer class="run-bar">
           <div class="tool-bar" id="tool-bar" role="toolbar" aria-label="Tools"></div>

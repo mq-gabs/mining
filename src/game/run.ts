@@ -2,10 +2,12 @@ import { CONFIG } from '../config';
 import { energyAfterTap, gasEnergyLoss, gemsKept, gemValue } from './economy';
 import { generateFloor } from './floor';
 import { isMinable, neighbors4, neighbors8, rowOf, square } from './grid';
-import { hasPerk, PERKS, rollPerkOffer } from './perks';
+import { gemValueMultWithoutPerks, hasPerk, PERKS, powerWithoutPerks, rollPerkOffer } from './perks';
 import { toolChargesFor } from './progression';
 import { hashSeed, Rng } from './rng';
 import type {
+  BlockType,
+  Content,
   EndReason,
   Floor,
   PerkId,
@@ -43,9 +45,10 @@ export function createRun(seed: number, mods: RunModifiers = defaultModifiers())
     gems: 0,
     perks: {},
     energyAdUsed: false,
+    momentum: 0,
     rngState: hashSeed(seed, 0x5eed),
     status: 'playing',
-    stats: { taps: 0, blocksBroken: 0, gemsByTier: {} },
+    stats: { taps: 0, blocksBroken: 0, rushes: 0, gemsByTier: {} },
   };
 }
 
@@ -63,7 +66,8 @@ function begin(prev: RunState): Ctx {
 
 function finish(ctx: Ctx): ActionResult {
   ctx.run.rngState = ctx.rng.state;
-  if (ctx.run.status === 'playing' && ctx.run.energy <= 0) {
+  // Taps are free during a Rush, so running dry only counts once it ends (see `tickRun`).
+  if (ctx.run.status === 'playing' && ctx.run.energy <= 0 && !ctx.run.rush) {
     ctx.run.status = 'outOfEnergy';
     ctx.events.push({ type: 'outOfEnergy' });
   }
@@ -78,12 +82,17 @@ export function tapCell(prev: RunState, idx: number): ActionResult {
 
   // Tapping revealed stairs takes you down (free).
   if (target.open && target.content.kind === 'stairs') return descend(prev);
-  if (!isMinable(prev.floor, idx) || prev.energy <= 0) return { run: prev, events: [] };
+  // During a Rush any block can be mined, not just the ones next to an open cell.
+  const reachable = prev.rush ? !target.open : isMinable(prev.floor, idx);
+  if (!reachable || (prev.energy <= 0 && !prev.rush)) return { run: prev, events: [] };
 
   const ctx = begin(prev);
   const { run, rng, events } = ctx;
 
-  if (hasPerk(run, 'efficientSwing') && rng.chance(CONFIG.perks.efficientSwing.chance)) {
+  const rushing = !!run.rush;
+  if (rushing) {
+    // Rush taps are free, and perks (Efficient Swing, Tremor, Sharp Edge) don't apply.
+  } else if (hasPerk(run, 'efficientSwing') && rng.chance(CONFIG.perks.efficientSwing.chance)) {
     events.push({ type: 'freeSwing', idx });
   } else {
     run.energy = energyAfterTap(run.energy);
@@ -92,7 +101,8 @@ export function tapCell(prev: RunState, idx: number): ActionResult {
 
   // Tremor hits blocks that were already closed, not ones a cave-in just dropped.
   const tremorTargets = neighbors4(run.floor, idx).filter((n) => !run.floor.cells[n].open);
-  if (damageBlock(ctx, idx, run.mods.power) && hasPerk(run, 'tremor')) {
+  const power = rushing ? powerWithoutPerks(run) * CONFIG.rush.powerMult : run.mods.power;
+  if (damageBlock(ctx, idx, power) && !rushing && hasPerk(run, 'tremor')) {
     for (const n of tremorTargets) damageBlock(ctx, n, CONFIG.perks.tremor.damage);
   }
   return finish(ctx);
@@ -137,39 +147,45 @@ export function useTool(prev: RunState, tool: ToolId, idx: number): ActionResult
     const cell = run.floor.cells[n];
     if (tool === 'scanner') cell.scanned = true;
     // A cave-in earlier in the same blast can refill cells; those stay closed.
-    else if (!cell.open) breakBlock(ctx, n, { triggerGas: tool !== 'dynamite' });
+    else if (!cell.open) breakBlock(ctx, n, { source: 'tool', triggerGas: tool !== 'dynamite' });
   }
   return finish(ctx);
 }
 
-/** Deals damage to a closed block, breaking it at 0 HP. Returns true if it broke. */
-function damageBlock(ctx: Ctx, idx: number, amount: number, opts: BreakOptions = {}): boolean {
+/** Deals pickaxe (or Tremor) damage to a closed block, breaking it at 0 HP. Returns true if it broke. */
+function damageBlock(ctx: Ctx, idx: number, amount: number): boolean {
   const cell = ctx.run.floor.cells[idx];
   if (cell.open) return false;
   const damage = Math.min(cell.hp, amount);
   cell.hp -= damage;
   ctx.events.push({ type: 'hit', idx, damage });
   if (cell.hp > 0) return false;
-  breakBlock(ctx, idx, opts);
+  breakBlock(ctx, idx, { source: 'pickaxe' });
   return true;
 }
 
 interface BreakOptions {
+  /** Only pickaxe breaks (Tremor included) fill the Rush meter; tools would fill it in one blast. */
+  source: 'pickaxe' | 'tool';
   /** Dynamite breaks gas pockets without releasing them. */
   triggerGas?: boolean;
 }
 
 /** Opens a block and resolves its content. Used by the pickaxe, tremor, and tools. */
-function breakBlock(ctx: Ctx, idx: number, opts: BreakOptions = {}) {
+function breakBlock(ctx: Ctx, idx: number, opts: BreakOptions) {
   const { run, rng, events } = ctx;
   const cell = run.floor.cells[idx];
+  const block = cell.block;
   cell.open = true;
   cell.hp = 0;
   run.stats.blocksBroken++;
-  events.push({ type: 'break', idx, block: cell.block });
+  const rush = run.rush;
+  if (rush) rush.blocks++;
+  events.push(rush ? { type: 'break', idx, block, combo: rush.blocks } : { type: 'break', idx, block });
 
   const content = cell.content;
   if (content.kind !== 'stairs') cell.content = { kind: 'none' };
+  if (rush) return resolveRushContent(ctx, idx, content);
 
   switch (content.kind) {
     case 'gem': {
@@ -189,9 +205,7 @@ function breakBlock(ctx: Ctx, idx: number, opts: BreakOptions = {}) {
     }
     case 'chest': {
       if (rng.chance(CONFIG.chest.perkChance) && offerPerk(ctx, 'chest')) break;
-      const c = CONFIG.chest;
-      const base = c.gemsMin + rng.int(c.gemsMax - c.gemsMin + 1) + Math.floor(run.depth * c.gemsPerDepth);
-      const gems = Math.max(1, Math.round(base * run.mods.gemValueMult));
+      const gems = chestGems(run, rng, run.mods.gemValueMult);
       run.gems += gems;
       events.push({ type: 'chest', idx, gems });
       break;
@@ -223,6 +237,87 @@ function breakBlock(ctx: Ctx, idx: number, opts: BreakOptions = {}) {
       events.push({ type: 'stairsRevealed', idx });
       break;
   }
+
+  if (opts.source === 'pickaxe') addMomentum(ctx, idx, momentumFill(run, block));
+}
+
+/** Gems in a chest: a random base plus a depth bonus, times `valueMult`. */
+function chestGems(run: RunState, rng: Rng, valueMult: number): number {
+  const c = CONFIG.chest;
+  const base = c.gemsMin + rng.int(c.gemsMax - c.gemsMin + 1) + Math.floor(run.depth * c.gemsPerDepth);
+  return Math.max(1, Math.round(base * valueMult));
+}
+
+/**
+ * During a Rush only gems count: gems and chest gems are collected without perks (no Lucky Strike, Greed or
+ * chest perk offers). Crystals, gas and cave-ins do nothing and are lost. Stairs are still revealed.
+ */
+function resolveRushContent(ctx: Ctx, idx: number, content: Content) {
+  const { run, rng, events } = ctx;
+  const mult = gemValueMultWithoutPerks(run);
+  let gems = 0;
+  if (content.kind === 'gem') {
+    gems = gemValue(content.tier, mult);
+    run.stats.gemsByTier[content.tier] = (run.stats.gemsByTier[content.tier] ?? 0) + 1;
+    events.push({ type: 'gem', idx, tier: content.tier, value: gems, doubled: false });
+  } else if (content.kind === 'chest') {
+    gems = chestGems(run, rng, mult);
+    events.push({ type: 'chest', idx, gems });
+  } else if (content.kind === 'stairs') {
+    events.push({ type: 'stairsRevealed', idx });
+  }
+  run.gems += gems;
+  run.rush!.gems += gems;
+}
+
+/** Momentum a pickaxe break adds: harder blocks give more, and each Rush this run makes the next slower. */
+export function momentumFill(run: RunState, block: BlockType): number {
+  return CONFIG.rush.fill[block] * CONFIG.rush.fillDecay ** run.stats.rushes;
+}
+
+/** Fills the Rush meter; a full meter starts the Rush at once (even mid-tap, before Tremor hits). */
+function addMomentum(ctx: Ctx, idx: number, amount: number) {
+  const run = ctx.run;
+  run.momentum = Math.min(1, run.momentum + amount);
+  // Tolerance for float sums like 0.1 * 10.
+  if (run.momentum < 1 - 1e-9) {
+    ctx.events.push({ type: 'momentum', idx, level: run.momentum });
+    return;
+  }
+  run.momentum = 0;
+  run.stats.rushes++;
+  run.rush = { msLeft: CONFIG.rush.durationSec * 1000, blocks: 0, gems: 0 };
+  ctx.events.push({ type: 'rushStart', idx });
+}
+
+export function hasRush(run: RunState): boolean {
+  return !!run.rush;
+}
+
+/**
+ * Lets `dtMs` of play time pass: the meter drains, or the Rush timer runs down. When a Rush ends, a
+ * run with no energy left runs dry. Only ticks while playing (modals pause it). Returns the same object
+ * when nothing changes, so the UI can call it every frame.
+ */
+export function tickRun(prev: RunState, dtMs: number): ActionResult {
+  const noop = { run: prev, events: [] };
+  if (prev.status !== 'playing' || dtMs <= 0) return noop;
+  const rush = prev.rush;
+  if (!rush) {
+    if (prev.momentum <= 0) return noop;
+    // Shallow copy: only `momentum` changes, so there's no need to clone the floor every frame.
+    const momentum = Math.max(0, prev.momentum - (CONFIG.rush.drainPerSec * dtMs) / 1000);
+    return { run: { ...prev, momentum }, events: [] };
+  }
+  if (rush.msLeft > dtMs) return { run: { ...prev, rush: { ...rush, msLeft: rush.msLeft - dtMs } }, events: [] };
+
+  const ctx = begin(prev);
+  ctx.run.rush = undefined;
+  ctx.run.momentum = 0;
+  ctx.events.push({ type: 'rushEnd', blocks: rush.blocks, gems: rush.gems });
+  // A perk choice pauses the run, so running dry (if energy is 0) waits until the perk is picked.
+  if (rush.perkOfferPending) offerPerk(ctx, 'floor');
+  return finish(ctx);
 }
 
 /** Pauses the run for a perk choice. Returns false if no perks are left or one is already pending. */
@@ -242,15 +337,19 @@ export function descend(prev: RunState): ActionResult {
   run.depth++;
   run.floor = generateFloor(run.seed, run.depth, { gemChanceBonus: run.mods.gemChanceBonus });
 
+  // A Rush changes nothing but gems: no Deep Breath, and a floor perk offer waits for the Rush to end.
   let restored = 0;
-  if (hasPerk(run, 'deepBreath')) {
+  if (hasPerk(run, 'deepBreath') && !run.rush) {
     const before = run.energy;
     run.energy = Math.min(run.mods.maxEnergy, run.energy + CONFIG.perks.deepBreath.energy);
     restored = run.energy - before;
   }
   events.push({ type: 'descend', depth: run.depth, energyRestored: restored });
 
-  if (run.depth % CONFIG.perks.offerEveryFloors === 0) offerPerk(ctx, 'floor');
+  if (run.depth % CONFIG.perks.offerEveryFloors === 0) {
+    if (run.rush) run.rush.perkOfferPending = true;
+    else offerPerk(ctx, 'floor');
+  }
   return finish(ctx);
 }
 

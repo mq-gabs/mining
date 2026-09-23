@@ -65,6 +65,15 @@ export type RunStatus = 'playing' | 'choosingPerk' | 'outOfEnergy' | 'ended';
 export type EndReason = 'left' | 'exhausted';
 export type PerkOfferSource = 'floor' | 'chest';
 
+/** An active Rush, and what it has earned so far (for the end-of-Rush float). */
+export interface RushState {
+  msLeft: number;
+  blocks: number;
+  gems: number;
+  /** A floor perk offer came due during the Rush; it's made when the Rush ends. */
+  perkOfferPending?: boolean;
+}
+
 export interface RunState {
   seed: number;
   depth: number;
@@ -81,17 +90,23 @@ export interface RunState {
   perkOffer?: { source: PerkOfferSource; choices: PerkId[] };
   /** The out-of-energy rewarded ad was already used this run (it's once per run). */
   energyAdUsed: boolean;
+  /** Rush meter, 0..1. Filled by pickaxe breaks, drained over time by `tickRun`. */
+  momentum: number;
+  /** Present while a Rush is active. */
+  rush?: RushState;
   /** In-run randomness (perk procs, cave-ins, perk offers), separate from floor generation. */
   rngState: number;
   status: RunStatus;
   /** `gemsByTier` counts gems picked up (a Lucky Strike double counts as two). */
-  stats: { taps: number; blocksBroken: number; gemsByTier: Partial<Record<GemTier, number>> };
+  /** `rushes` counts Rushes started (later ones fill slower, see `CONFIG.rush.fillDecay`). */
+  stats: { taps: number; blocksBroken: number; rushes: number; gemsByTier: Partial<Record<GemTier, number>> };
 }
 
 export type RunEvent =
   | { type: 'hit'; idx: number; damage: number }
   | { type: 'freeSwing'; idx: number }
-  | { type: 'break'; idx: number; block: BlockType }
+  /** `combo` is the block's number within the current Rush (only during a Rush). */
+  | { type: 'break'; idx: number; block: BlockType; combo?: number }
   | { type: 'gem'; idx: number; tier: GemTier; value: number; doubled: boolean }
   | { type: 'crystal'; idx: number; energy: number }
   | { type: 'chest'; idx: number; gems: number }
@@ -102,7 +117,11 @@ export type RunEvent =
   | { type: 'descend'; depth: number; energyRestored: number }
   | { type: 'perkOffer'; source: PerkOfferSource; choices: PerkId[] }
   | { type: 'perkChosen'; perk: PerkId }
-  | { type: 'outOfEnergy' };
+  | { type: 'outOfEnergy' }
+  /** A pickaxe break added momentum; `level` is the meter after it (0..1). */
+  | { type: 'momentum'; idx: number; level: number }
+  | { type: 'rushStart'; idx: number }
+  | { type: 'rushEnd'; blocks: number; gems: number };
 
 export interface RunSummary {
   seed: number;

@@ -108,6 +108,16 @@ export const PERKS: Record<PerkId, PerkDef> = {
 
 export const PERK_IDS = Object.keys(PERKS) as PerkId[];
 
+/** Pickaxe power without Sharp Edge (a Rush ignores perks). */
+export function powerWithoutPerks(run: Pick<RunState, 'perks' | 'mods'>): number {
+  return run.mods.power - (run.perks.sharpEdge ?? 0) * P.sharpEdge.power;
+}
+
+/** Gem value multiplier without Greed (a Rush ignores perks). */
+export function gemValueMultWithoutPerks(run: Pick<RunState, 'perks' | 'mods'>): number {
+  return run.mods.gemValueMult - (hasPerk(run, 'greed') ? P.greed.gemValueBonus : 0);
+}
+
 export function hasPerk(run: Pick<RunState, 'perks'>, id: PerkId): boolean {
   return (run.perks[id] ?? 0) > 0;
 }

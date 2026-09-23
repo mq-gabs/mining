@@ -11,7 +11,8 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   synthesized sound (`platform/audio.ts` synth, recipes + event mapping in `ui/sounds.ts`), mute toggle,
   responsive pass (narrow phones, landscape side-by-side layout),
   M6 ads (`AdService` + `MockAdService` in `platform/ads.ts`, behind the `ads` feature flag).
-- All six milestones of the spec are done. Extra: procedural adaptive background music (`ui/music.ts`).
+- All six milestones of the spec are done. Extra: procedural adaptive background music (`ui/music.ts`),
+  and Rush (see the Rush section below).
 
 ## Commands
 
@@ -37,7 +38,7 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
 - Browser services live in `src/platform/` (localStorage `ProfileStore` with in-memory fallback). Saves are
   parsed through `parseProfile`, which clamps and fills defaults. Bump `PROFILE_VERSION` on shape changes.
 - Music is procedural (`MusicEngine` in `ui/music.ts`): a lookahead scheduler on the `Synth`'s music bus.
-  The mood is a pure function of the scene (`moodFor`: hub, or run depth + low energy) and changes crossfade.
+  The mood is a pure function of the scene (`moodFor`: hub, or run depth + low energy, or Rush) and changes crossfade.
   All music tuning lives in `CONFIG.music`. Audio "holds" (`Synth.hold('hidden' | 'ad')`) suspend the whole
   context, so a hidden tab or an ad pauses music and SFX together.
 - Sounds are generated with Web Audio, never loaded from files. Device prefs (mute) live in `SettingsStore`,
@@ -62,6 +63,40 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   A tool that would affect nothing (e.g. rescanning a known area) is a no-op and keeps its charge.
 - Only one perk offer can be pending: a second perk chest in the same dynamite blast pays out gems instead.
 
+## Rush
+
+A burst of speed in an otherwise careful game: it rewards a steady pace but shouldn't punish a short pause
+to read hints. Tuning lives in `CONFIG.rush` and `CONFIG.music.rush`; tests are in `rush.test.ts`.
+
+- **Meter** (`run.momentum`, 0..1): each block broken by the pickaxe or Tremor adds `rush.fill[block]` (harder
+  gives more). Tool breaks add nothing (`BreakOptions.source`). It always drains at `drainPerSec`, with no idle
+  delay, and carries over between floors. Each Rush already had this run scales the fill by `fillDecay` (0.5).
+  Without the decay, a player who one-shots blocks chains Rushes forever and runs never end.
+- **Rush** (`run.rush`): starts the moment the meter is full, even mid-tap. It lasts `durationSec` (5 s, the
+  user's choice). During it, taps cost no energy, power is ×`powerMult`, and any closed block can be mined
+  without adjacency. **Only gems change:** gems and chest gems are collected. Crystals, gas and cave-ins do
+  nothing and are lost. Chests never offer a perk. Perks are ignored (Sharp Edge, Tremor, Lucky Strike, Greed,
+  Efficient Swing, Deep Breath; see `powerWithoutPerks` / `gemValueMultWithoutPerks`). A floor perk offer that
+  comes due mid-Rush waits for the Rush to end (`rush.perkOfferPending`). Stairs still work, and the Rush carries
+  over them. Tools work as normal, but their breaks follow the same gems-only rules. The meter doesn't fill.
+  Energy 0 doesn't end the run during a Rush; when the Rush ends, the normal out-of-energy flow starts (after any
+  held perk choice).
+- **Time:** `tickRun(run, dtMs)` is the only clock. It returns the same object when nothing changes. The `App`
+  loop ticks it only while playable (no modal, tab visible, no floor slide), with `dt` clamped to 100 ms. Plain
+  drain frames skip `apply`. The sim ticks `BOT_MS_PER_TAP` (300) per action. Tests that play whole runs must
+  tick too, or a Rush never ends.
+- **Events:** `momentum` (meter tick SFX), `rushStart`, `rushEnd` (blocks and gems, for the result float),
+  and `break.combo` (combo float and rising pitch). The gold block palette is `RUSH_BLOCK_COLORS`
+  (`DrawView.rush`). Reduced motion drops the flash, shimmer and shake.
+- **Music:** the `rush` mood (150 BPM kick, hat, bass and arp on a separate bus) overrides depth and low energy,
+  with a 0.3 s crossfade.
+- **Balance, open:** Rush frequency (the original goal was one every 2–3 floors) and the depth targets conflict,
+  because free taps compound through upgrades. With the gems-only rules the bot reaches floor 4.9 on run 1 and
+  14.5 on run 10, at the top of its target (19.4 on run 10 before gems-only, 11.5 with Rush off). Rushes come every
+  4–7 floors. The bot doesn't use the any-block reach, so real players may gain more than the sim shows.
+  The gems-only rules are also the balance fix: before them, run 10 overshot to floor 19. The full sim report and
+  next levers to try are in `docs/reports/2026-09-23-rush-balance.md`.
+
 ## Balance workflow
 
 - Targets: first run reaches floor 3–4; by run 10, floor 10–12; an upgrade is affordable after almost
@@ -69,8 +104,10 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   human targets.
 - After any change to mechanics or config, rerun the sim and report the table. A test in `roguelike.test.ts`
   asserts that a maxed-out player still runs out of energy. Keep it passing.
-- Known open issue: upgrades bought per run rise over time instead of slowing down (~0.9 → 2.9 by run 10
-  with gas at 8 energy; it was ~1.0 → 4.1 with gas at 5, and ~0.8 → 2.7 before M4's tool upgrades).
+- Longer balance analyses go in `docs/reports/YYYY-MM-DD-<topic>.md` (setup, table, findings, next levers).
+  Append an update section when a follow-up change is measured, instead of a new file.
+- Known open issue: upgrades bought per run rise over time instead of slowing down (~1.2 → 4.0 by run 10
+  with Rush, ~0.9 → 2.9 before it, with gas at 8 energy; it was ~1.0 → 4.1 with gas at 5, and ~0.8 → 2.7 before M4's tool upgrades).
 
 ## Testing gotchas
 

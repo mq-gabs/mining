@@ -1,7 +1,7 @@
 import type { CellHint } from '../game/hints';
 import { toColRow } from '../game/grid';
 import { Rng } from '../game/rng';
-import { GEM_TIERS, type BlockType, type GemTier } from '../config';
+import { GEM_TIERS, type GemTier } from '../config';
 import type { Cell, Floor, RunEvent } from '../game/types';
 import {
   BACKDROP_COLOR,
@@ -13,6 +13,8 @@ import {
   GAS_COLOR,
   GEM_COLORS,
   GEM_SHAPES,
+  RUSH_BLOCK_COLORS,
+  RUSH_COLOR,
   SCAN_COLOR,
   SPARKLE_COLOR,
   TREASURE_COLOR,
@@ -26,6 +28,8 @@ export interface DrawView {
   tierColors: boolean;
   /** Treasure Sense: exposed chests glow. */
   showChests: boolean;
+  /** A Rush is active: blocks turn gold. */
+  rush: boolean;
 }
 
 interface FloatText {
@@ -69,7 +73,7 @@ interface Particle {
 interface Pop {
   x: number;
   y: number;
-  block: BlockType;
+  color: string;
   start: number;
 }
 
@@ -88,6 +92,10 @@ const POP_MS = 180;
 const FLOOR_SLIDE_MS = 260;
 const GAP = 3;
 const MAX_PARTICLES = 400;
+/** Blocks fade between their normal and gold colours over this long. */
+const RUSH_FADE_MS = 250;
+const RUSH_FLASH_MS = 220;
+const RUSH_RESULT_MS = 1600;
 
 /** Draws a floor onto a canvas and maps pointer positions back to cells. */
 export class GridRenderer {
@@ -110,6 +118,10 @@ export class GridRenderer {
   private lastDrawn?: { floor: Floor; view: DrawView };
   /** Honour the OS "reduce motion" setting: no screen shake or floor slide. */
   private reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  /** Rush palette state as last drawn, and when it last flipped (for the colour fade). */
+  private rushOn = false;
+  private rushFlipAt = -Infinity;
+  private rushFlashAt = -Infinity;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -162,6 +174,11 @@ export class GridRenderer {
     };
   }
 
+  /** The floor transition is playing (the game pauses the Rush clock meanwhile). */
+  isSliding(now: number): boolean {
+    return !!this.slide && now - this.slide.start < FLOOR_SLIDE_MS;
+  }
+
   private float(floor: Floor, idx: number, text: string, color: string, now: number, size = 20, gem?: GemTier) {
     const { x, y } = this.cellCenter(floor, idx);
     // Stagger texts that land on the same cell in the same action.
@@ -169,24 +186,28 @@ export class GridRenderer {
     this.floats.push({ x, y: y + stacked * 20, text, color, start: now, duration: 750, size, gem });
   }
 
-  handleEvents(floor: Floor, events: RunEvent[], now: number) {
+  /** `rush`: a Rush is active after these events (debris and ghosts take the gold palette). */
+  handleEvents(floor: Floor, events: RunEvent[], now: number, rush = false) {
     // With many blocks breaking at once (tools), keep the debris per block smaller.
     const breaks = events.filter((e) => e.type === 'break').length;
     const debris = breaks > 3 ? 5 : 12;
+    const palette = rush ? RUSH_BLOCK_COLORS : BLOCK_COLORS;
     for (const e of events) {
       switch (e.type) {
         case 'hit': {
           this.hitTimes.set(e.idx, now);
           const block = floor.cells[e.idx]?.block ?? 'dirt';
-          this.burst(floor, e.idx, BLOCK_COLORS[block].top, now, { count: 3, speed: 90, size: 3, duration: 220 });
+          this.burst(floor, e.idx, palette[block].top, now, { count: 3, speed: 90, size: 3, duration: 220 });
           break;
         }
         case 'break': {
           const { x, y } = this.cellCenter(floor, e.idx);
-          this.pops.push({ x, y, block: e.block, start: now });
-          const c = BLOCK_COLORS[e.block];
+          const c = palette[e.block];
+          this.pops.push({ x, y, color: c.top, start: now });
           this.burst(floor, e.idx, c.top, now, { count: debris, speed: 170, size: 4, duration: 280 });
           this.burst(floor, e.idx, c.bottom, now, { count: debris / 2, speed: 120, size: 5, duration: 280 });
+          // Combo count, only for the pickaxe (a blast would stack a column of numbers).
+          if (e.combo && breaks <= 3) this.float(floor, e.idx, `×${e.combo}`, RUSH_COLOR, now, 16 + Math.min(e.combo, 12));
           break;
         }
         case 'freeSwing':
@@ -253,6 +274,21 @@ export class GridRenderer {
             for (const idx of e.cells) this.puff(floor, idx, 'rgba(255,220,160,0.5)', now, 0.7);
           }
           break;
+        case 'rushStart':
+          // Reduced motion: no flash, the palette change is the cue.
+          if (!this.reducedMotion) this.rushFlashAt = now;
+          this.shake(now, 4);
+          this.ring(floor, e.idx, RUSH_COLOR, now, 2.2);
+          this.burst(floor, e.idx, RUSH_COLOR, now, { count: 18, speed: 240, size: 5, duration: 280, star: true, gravity: 0 });
+          break;
+        case 'rushEnd': {
+          // Centred on the grid, and it stays longer than a cell float so the result can be read.
+          const x = this.originX + (this.cellSize * floor.cols) / 2;
+          const y = this.originY + (this.cellSize * floor.rows) / 2;
+          const text = `Rush! ${e.blocks} block${e.blocks === 1 ? '' : 's'} · +${e.gems} 💎`;
+          this.floats.push({ x, y, text, color: RUSH_COLOR, start: now, duration: RUSH_RESULT_MS, size: 22 });
+          break;
+        }
         case 'descend':
           if (this.lastDrawn && !this.reducedMotion) this.slide = { from: this.lastDrawn.floor, view: this.lastDrawn.view, start: now };
           this.hitTimes.clear();
@@ -310,11 +346,22 @@ export class GridRenderer {
     this.puffs.push({ x, y, color, start: now, duration: 280, radius: this.cellSize * 0.8 * scale });
   }
 
+  /** 0 = normal colours, 1 = full gold; fades over `RUSH_FADE_MS` when a Rush starts or ends. */
+  private rushMix(now: number): number {
+    const t = Math.min(1, (now - this.rushFlipAt) / RUSH_FADE_MS);
+    return this.rushOn ? t : 1 - t;
+  }
+
   draw(floor: Floor, view: DrawView, now: number) {
     const ctx = this.ctx;
     this.layout(floor);
     ctx.clearRect(0, 0, this.width, this.height);
     this.lastDrawn = { floor, view };
+    if (view.rush !== this.rushOn) {
+      this.rushOn = view.rush;
+      this.rushFlipAt = now;
+    }
+    const rushMix = this.rushMix(now);
 
     ctx.save();
     const shakeT = (now - this.screenShakeAt) / SCREEN_SHAKE_MS;
@@ -329,6 +376,19 @@ export class GridRenderer {
     ctx.fillStyle = BACKDROP_COLOR;
     roundRect(ctx, this.originX - 4, this.originY - 4, gridW + 8, gridH + 8, 12);
     ctx.fill();
+    if (rushMix > 0) {
+      // Pulsing gold border.
+      const pulse = this.reducedMotion ? 0.7 : 0.5 + 0.5 * Math.sin(now / 140);
+      ctx.save();
+      ctx.globalAlpha = rushMix * (0.45 + 0.55 * pulse);
+      ctx.strokeStyle = RUSH_COLOR;
+      ctx.shadowColor = RUSH_COLOR;
+      ctx.shadowBlur = 6 + pulse * 10;
+      ctx.lineWidth = 3;
+      roundRect(ctx, this.originX - 3, this.originY - 3, gridW + 6, gridH + 6, 11);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // Floor transition: the camera moves down, so the old floor leaves upward and the new one rises in.
     const slideT = this.slide ? (now - this.slide.start) / FLOOR_SLIDE_MS : 1;
@@ -338,12 +398,21 @@ export class GridRenderer {
       ctx.beginPath();
       ctx.rect(this.originX, this.originY, gridW, gridH);
       ctx.clip();
-      this.drawCells(this.slide.from, this.slide.view, now, -e * gridH);
-      this.drawCells(floor, view, now, (1 - e) * gridH);
+      this.drawCells(this.slide.from, this.slide.view, now, rushMix, -e * gridH);
+      this.drawCells(floor, view, now, rushMix, (1 - e) * gridH);
       ctx.restore();
     } else {
       this.slide = undefined;
-      this.drawCells(floor, view, now, 0);
+      this.drawCells(floor, view, now, rushMix, 0);
+    }
+
+    const flashT = (now - this.rushFlashAt) / RUSH_FLASH_MS;
+    if (flashT < 1) {
+      ctx.globalAlpha = 0.55 * (1 - flashT) ** 2;
+      ctx.fillStyle = '#fff1b8';
+      roundRect(ctx, this.originX - 4, this.originY - 4, gridW + 8, gridH + 8, 12);
+      ctx.fill();
+      ctx.globalAlpha = 1;
     }
 
     this.drawPops(now);
@@ -354,7 +423,7 @@ export class GridRenderer {
     ctx.restore();
   }
 
-  private drawCells(floor: Floor, view: DrawView, now: number, offsetY: number) {
+  private drawCells(floor: Floor, view: DrawView, now: number, rushMix: number, offsetY: number) {
     const s = this.cellSize;
     floor.cells.forEach((cell, idx) => {
       const { col, row } = toColRow(floor, idx);
@@ -367,7 +436,7 @@ export class GridRenderer {
         else this.hitTimes.delete(idx);
       }
       if (cell.open) this.drawOpen(floor, cell, idx, x, y, s, now);
-      else this.drawBlock(floor, cell, idx, x, y, s, view, now);
+      else this.drawBlock(floor, cell, idx, x, y, s, view, now, rushMix);
     });
   }
 
@@ -419,28 +488,20 @@ export class GridRenderer {
     s: number,
     view: DrawView,
     now: number,
+    rushMix: number,
   ) {
     const ctx = this.ctx;
-    const colors = BLOCK_COLORS[cell.block];
     const bx = x + GAP / 2;
     const by = y + GAP / 2;
     const bs = s - GAP;
 
-    const g = ctx.createLinearGradient(bx, by, bx, by + bs);
-    g.addColorStop(0, colors.top);
-    g.addColorStop(1, colors.bottom);
-    ctx.fillStyle = g;
-    roundRect(ctx, bx, by, bs, bs, 6);
-    ctx.fill();
-
-    // Deterministic texture specks per cell.
-    const rng = new Rng(floor.seed ^ (idx * 2654435761));
-    ctx.fillStyle = colors.speck;
-    for (let i = 0; i < 5; i++) {
-      const r = 1 + rng.next() * bs * 0.05;
-      ctx.beginPath();
-      ctx.arc(bx + 6 + rng.next() * (bs - 12), by + 6 + rng.next() * (bs - 12), r, 0, Math.PI * 2);
-      ctx.fill();
+    // During the Rush fade both palettes are drawn, gold on top at the fade's opacity.
+    if (rushMix < 1) this.drawBlockBody(floor.seed, idx, BLOCK_COLORS[cell.block], bx, by, bs);
+    if (rushMix > 0) {
+      ctx.globalAlpha = rushMix;
+      this.drawBlockBody(floor.seed, idx, RUSH_BLOCK_COLORS[cell.block], bx, by, bs);
+      if (!this.reducedMotion) this.drawShimmer(bx, by, bs, now);
+      ctx.globalAlpha = 1;
     }
     if (cell.block === 'obsidian') {
       ctx.strokeStyle = 'rgba(210,170,255,0.35)';
@@ -471,11 +532,48 @@ export class GridRenderer {
         this.drawSparkles(floor.seed, idx, bx, by, bs, color, now);
       }
     } else {
-      ctx.fillStyle = 'rgba(0,0,0,0.42)';
+      // Unexposed blocks are dimmed as out of reach, except in a Rush, where any block can be mined.
+      ctx.fillStyle = `rgba(0,0,0,${0.42 * (1 - rushMix)})`;
       roundRect(ctx, bx, by, bs, bs, 6);
       ctx.fill();
     }
     if (cell.scanned) this.drawScanned(cell, bx, by, bs);
+  }
+
+  /** Block gradient and its deterministic texture specks. */
+  private drawBlockBody(seed: number, idx: number, colors: { top: string; bottom: string; speck: string }, bx: number, by: number, bs: number) {
+    const ctx = this.ctx;
+    const g = ctx.createLinearGradient(bx, by, bx, by + bs);
+    g.addColorStop(0, colors.top);
+    g.addColorStop(1, colors.bottom);
+    ctx.fillStyle = g;
+    roundRect(ctx, bx, by, bs, bs, 6);
+    ctx.fill();
+    const rng = new Rng(seed ^ (idx * 2654435761));
+    ctx.fillStyle = colors.speck;
+    for (let i = 0; i < 5; i++) {
+      const r = 1 + rng.next() * bs * 0.05;
+      ctx.beginPath();
+      ctx.arc(bx + 6 + rng.next() * (bs - 12), by + 6 + rng.next() * (bs - 12), r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  /** A soft diagonal band of light sweeping across the whole grid (each block draws its slice). */
+  private drawShimmer(bx: number, by: number, bs: number, now: number) {
+    const ctx = this.ctx;
+    const span = (this.width + this.height) * 1.5;
+    // Band position along the x + y diagonal, looping every 1.6 s.
+    const band = ((now / 1600) % 1) * span - span / 6;
+    const d = bx + by + bs - band;
+    const width = this.cellSize * 2.2;
+    if (Math.abs(d) > width) return;
+    const alpha = ctx.globalAlpha;
+    ctx.globalAlpha = alpha * 0.35 * (1 - Math.abs(d) / width);
+    ctx.fillStyle = '#fff6d0';
+    roundRect(ctx, bx, by, bs, bs, 6);
+    ctx.fill();
+    ctx.globalAlpha = alpha;
   }
 
   /** Scanner result: a cyan frame and the block's content as an icon (nothing when empty). */
@@ -613,9 +711,8 @@ export class GridRenderer {
     for (const p of this.pops) {
       const t = (now - p.start) / POP_MS;
       const size = (this.cellSize - GAP) * (1 + 0.25 * t);
-      const colors = BLOCK_COLORS[p.block];
       ctx.globalAlpha = (1 - t) * 0.9;
-      ctx.fillStyle = colors.top;
+      ctx.fillStyle = p.color;
       roundRect(ctx, p.x - size / 2, p.y - size / 2, size, size, 6);
       ctx.fill();
     }

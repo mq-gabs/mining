@@ -14,7 +14,7 @@ import {
   upgradeCost,
   type Profile,
 } from '../src/game/progression';
-import { canTarget, choosePerk, createRun, endRun, tapCell, toolArea, useTool } from '../src/game/run';
+import { canTarget, choosePerk, createRun, endRun, tapCell, tickRun, toolArea, useTool } from '../src/game/run';
 import type { Cell, PerkId, RunState, RunSummary, ToolId } from '../src/game/types';
 
 /** Bot's perk preference, best first. */
@@ -24,6 +24,16 @@ const PERK_PRIORITY: PerkId[] = [
 ];
 
 declare const process: { argv: string[] };
+
+/** Play time per bot action, for the Rush clock. ~3 taps a second: a quick human. Tunable. */
+const BOT_MS_PER_TAP = 300;
+
+interface RunResult {
+  summary: RunSummary;
+  rushes: number;
+  rushBlocks: number;
+  rushGems: number;
+}
 
 type Rand = () => number;
 
@@ -100,8 +110,16 @@ function pickTool(run: RunState, target: number): { tool: ToolId; idx: number } 
 }
 
 /** Plays one run. Leaves on arrival at a floor if energy looks too low to clear it. */
-function playRun(seed: number, profile: Profile, rand: Rand): RunSummary {
+function playRun(seed: number, profile: Profile, rand: Rand): RunResult {
   let run = createRun(seed, modifiersFromProfile(profile));
+  const rush = { rushBlocks: 0, rushGems: 0 };
+  const result = (reason: 'left' | 'exhausted'): RunResult => ({
+    summary: endRun(run, reason).summary,
+    rushes: run.stats.rushes,
+    // Include a Rush still running when the bot leaves.
+    rushBlocks: rush.rushBlocks + (run.rush?.blocks ?? 0),
+    rushGems: rush.rushGems + (run.rush?.gems ?? 0),
+  });
   let energyAtFloorStart = run.energy;
   const floorCosts: number[] = [];
   let steps = 0;
@@ -123,16 +141,22 @@ function playRun(seed: number, profile: Profile, rand: Rand): RunSummary {
     if (next === run) {
       throw new Error(`bot stuck: seed ${seed} depth ${run.depth} cell ${t} ${JSON.stringify(run.floor.cells[t])}`);
     }
-    run = next;
+    const ticked = tickRun(next, BOT_MS_PER_TAP);
+    for (const e of ticked.events) {
+      if (e.type !== 'rushEnd') continue;
+      rush.rushBlocks += e.blocks;
+      rush.rushGems += e.gems;
+    }
+    run = ticked.run;
     if (run.depth > depth) {
       floorCosts.push(energyAtFloorStart - run.energy);
       energyAtFloorStart = run.energy;
       const avgCost = floorCosts.reduce((a, b) => a + b, 0) / floorCosts.length;
       // Deeper floors are harder, so be a little conservative.
-      if (run.energy < avgCost * 0.9) return endRun(run, 'left').summary;
+      if (run.energy < avgCost * 0.9 && !run.rush) return result('left');
     }
   }
-  return endRun(run, 'exhausted').summary;
+  return result('exhausted');
 }
 
 /** Buys the cheapest affordable upgrade until nothing is affordable. Returns count bought. */
@@ -150,11 +174,13 @@ function shop(profile: Profile): { profile: Profile; bought: number } {
 function simulateCareers(players: number, runs: number) {
   let rs = 1;
   const rand: Rand = () => (rs = (rs * 16807) % 2147483647) / 2147483647;
-  const rows = Array.from({ length: runs }, () => ({ depth: 0, kept: 0, bought: 0, left: 0, lvl: 0, tools: 0 }));
+  const rows = Array.from({ length: runs }, () => ({
+    depth: 0, kept: 0, bought: 0, left: 0, lvl: 0, tools: 0, rushes: 0, rushBlocks: 0, rushGems: 0, gems: 0,
+  }));
   for (let p = 0; p < players; p++) {
     let profile = newProfile();
     for (let r = 0; r < runs; r++) {
-      const summary = playRun((p * 1000 + r + 1) * 2654435761, profile, rand);
+      const { summary, rushes, rushBlocks, rushGems } = playRun((p * 1000 + r + 1) * 2654435761, profile, rand);
       profile = applyRunResult(profile, summary).profile;
       const res = shop(profile);
       profile = res.profile;
@@ -166,15 +192,24 @@ function simulateCareers(players: number, runs: number) {
       row.lvl += Object.values(profile.upgrades).reduce((a, b) => a + b, 0) / players;
       const charges = modifiersFromProfile(profile).toolCharges;
       row.tools += (charges.dynamite + charges.drill + charges.scanner) / players;
+      row.rushes += rushes;
+      row.rushBlocks += rushBlocks;
+      row.rushGems += rushGems;
+      row.gems += summary.gemsFound;
     }
   }
-  console.log('run | avg depth | gems kept | upgrades bought | total levels | left voluntarily | tool charges');
-  rows.forEach((r, i) =>
+  console.log(
+    'run | avg depth | gems kept | upgrades bought | total levels | left voluntarily | tool charges | rushes | floors/rush | blocks/rush | rush gems',
+  );
+  rows.forEach((r, i) => {
+    const perRush = (x: number) => (r.rushes ? (x / r.rushes).toFixed(1) : '–');
     console.log(
       `${String(i + 1).padStart(3)} | ${r.depth.toFixed(1).padStart(9)} | ${r.kept.toFixed(0).padStart(9)} | ` +
-        `${r.bought.toFixed(2).padStart(15)} | ${r.lvl.toFixed(1).padStart(12)} | ${(r.left * 100).toFixed(0).padStart(3)}% | ${r.tools.toFixed(1).padStart(4)}`,
-    ),
-  );
+        `${r.bought.toFixed(2).padStart(15)} | ${r.lvl.toFixed(1).padStart(12)} | ${(r.left * 100).toFixed(0).padStart(3)}% | ${r.tools.toFixed(1).padStart(4)} | ` +
+        `${(r.rushes / players).toFixed(2).padStart(6)} | ${perRush(r.depth * players).padStart(11)} | ${perRush(r.rushBlocks).padStart(11)} | ` +
+        `${((r.rushGems / Math.max(1, r.gems)) * 100).toFixed(0).padStart(8)}%`,
+    );
+  });
 }
 
 simulateCareers(Number(process.argv[2] ?? 200), Number(process.argv[3] ?? 15));
