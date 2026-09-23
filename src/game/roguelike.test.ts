@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
+import { gasEnergyLoss } from './economy';
 import { contentChanceForDepth, generateFloor } from './floor';
 import { computeHints } from './hints';
 import { availablePerks, PERK_IDS, rollPerkOffer } from './perks';
@@ -59,7 +60,7 @@ describe('pickups and hazards', () => {
   it('gas pocket drains energy unless wearing a gas mask', () => {
     const run = blankRun();
     set(run, below(run), { kind: 'gas' });
-    expect(tapCell(run, below(run)).run.energy).toBe(run.energy - 1 - CONFIG.hazards.gasEnergyLoss);
+    expect(tapCell(run, below(run)).run.energy).toBe(run.energy - 1 - gasEnergyLoss(run.depth));
     const masked = blankRun(['gasMask']);
     set(masked, below(masked), { kind: 'gas' });
     const r = tapCell(masked, below(masked));

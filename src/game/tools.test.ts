@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
+import { gasEnergyLoss } from './economy';
 import {
   buyUpgrade,
   canBuyUpgrade,
@@ -84,7 +85,7 @@ describe('drill', () => {
     const r = useTool(run, 'drill', below(run));
     for (let c = 0; c < cols; c++) expect(r.run.floor.cells[row + c].open).toBe(true);
     expect(r.run.floor.cells[row + cols].open).toBe(false);
-    expect(r.run.energy).toBe(run.energy - CONFIG.hazards.gasEnergyLoss);
+    expect(r.run.energy).toBe(run.energy - gasEnergyLoss(run.depth));
     expect(r.run.tools.drill).toBe(0);
   });
 

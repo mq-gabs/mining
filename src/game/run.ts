@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import { energyAfterTap, gemsKept, gemValue } from './economy';
+import { energyAfterTap, gasEnergyLoss, gemsKept, gemValue } from './economy';
 import { generateFloor } from './floor';
 import { isMinable, neighbors4, neighbors8, rowOf, square } from './grid';
 import { hasPerk, PERKS, rollPerkOffer } from './perks';
@@ -45,7 +45,7 @@ export function createRun(seed: number, mods: RunModifiers = defaultModifiers())
     energyAdUsed: false,
     rngState: hashSeed(seed, 0x5eed),
     status: 'playing',
-    stats: { taps: 0, blocksBroken: 0 },
+    stats: { taps: 0, blocksBroken: 0, gemsByTier: {} },
   };
 }
 
@@ -177,6 +177,7 @@ function breakBlock(ctx: Ctx, idx: number, opts: BreakOptions = {}) {
       const doubled = hasPerk(run, 'luckyStrike') && rng.chance(CONFIG.perks.luckyStrike.chance);
       if (doubled) value *= 2;
       run.gems += value;
+      run.stats.gemsByTier[content.tier] = (run.stats.gemsByTier[content.tier] ?? 0) + (doubled ? 2 : 1);
       events.push({ type: 'gem', idx, tier: content.tier, value, doubled });
       break;
     }
@@ -198,7 +199,7 @@ function breakBlock(ctx: Ctx, idx: number, opts: BreakOptions = {}) {
     case 'gas': {
       if (opts.triggerGas === false) break;
       const masked = hasPerk(run, 'gasMask');
-      const loss = masked ? 0 : Math.min(run.energy, CONFIG.hazards.gasEnergyLoss);
+      const loss = masked ? 0 : Math.min(run.energy, gasEnergyLoss(run.depth));
       run.energy -= loss;
       events.push({ type: 'gas', idx, energyLost: loss, masked });
       break;
@@ -298,6 +299,7 @@ export function endRun(prev: RunState, reason: EndReason): { run: RunState; summ
       gemsFound: run.gems,
       gemsKept: gemsKept(run.gems, reason),
       blocksBroken: run.stats.blocksBroken,
+      gemsByTier: { ...run.stats.gemsByTier },
     },
   };
 }

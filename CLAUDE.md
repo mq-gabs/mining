@@ -69,8 +69,8 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   human targets.
 - After any change to mechanics or config, rerun the sim and report the table. A test in `roguelike.test.ts`
   asserts that a maxed-out player still runs out of energy. Keep it passing.
-- Known open issue: upgrades bought per run rise over time instead of slowing down (~1.0 → 4.1 by run 10
-  since M4 added five cheap tool upgrades; it was ~0.8 → 2.7 before).
+- Known open issue: upgrades bought per run rise over time instead of slowing down (~0.9 → 2.9 by run 10
+  with gas at 8 energy; it was ~1.0 → 4.1 with gas at 5, and ~0.8 → 2.7 before M4's tool upgrades).
 
 ## Testing gotchas
 

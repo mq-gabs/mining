@@ -1,16 +1,18 @@
 import type { CellHint } from '../game/hints';
 import { toColRow } from '../game/grid';
 import { Rng } from '../game/rng';
-import { GEM_TIERS, type BlockType } from '../config';
+import { GEM_TIERS, type BlockType, type GemTier } from '../config';
 import type { Cell, Floor, RunEvent } from '../game/types';
 import {
   BACKDROP_COLOR,
   BLAST_COLOR,
   BLOCK_COLORS,
   CRYSTAL_COLOR,
+  DAMAGE_COLOR,
   DUST_COLOR,
   GAS_COLOR,
   GEM_COLORS,
+  GEM_SHAPES,
   SCAN_COLOR,
   SPARKLE_COLOR,
   TREASURE_COLOR,
@@ -34,6 +36,8 @@ interface FloatText {
   start: number;
   duration: number;
   size: number;
+  /** Gem icon drawn before the text. */
+  gem?: GemTier;
 }
 
 interface Puff {
@@ -158,11 +162,11 @@ export class GridRenderer {
     };
   }
 
-  private float(floor: Floor, idx: number, text: string, color: string, now: number, size = 20) {
+  private float(floor: Floor, idx: number, text: string, color: string, now: number, size = 20, gem?: GemTier) {
     const { x, y } = this.cellCenter(floor, idx);
     // Stagger texts that land on the same cell in the same action.
     const stacked = this.floats.filter((f) => f.start === now && Math.abs(f.x - x) < 1 && Math.abs(f.y - y) < 1).length;
-    this.floats.push({ x, y: y + stacked * 20, text, color, start: now, duration: 750, size });
+    this.floats.push({ x, y: y + stacked * 20, text, color, start: now, duration: 750, size, gem });
   }
 
   handleEvents(floor: Floor, events: RunEvent[], now: number) {
@@ -190,7 +194,7 @@ export class GridRenderer {
           break;
         case 'gem': {
           const rank = GEM_TIERS.indexOf(e.tier);
-          this.float(floor, e.idx, `+${e.value}${e.doubled ? ' ×2' : ''}`, GEM_COLORS[e.tier], now, 20 + rank * 2);
+          this.float(floor, e.idx, `+${e.value}${e.doubled ? ' ×2' : ''}`, GEM_COLORS[e.tier], now, 20 + rank * 2, e.tier);
           this.burst(floor, e.idx, GEM_COLORS[e.tier], now, {
             count: 5 + rank * 3,
             speed: 110 + rank * 30,
@@ -222,7 +226,8 @@ export class GridRenderer {
           break;
         case 'gas':
           this.puff(floor, e.idx, e.masked ? 'rgba(140,200,120,0.3)' : 'rgba(120,220,90,0.6)', now, 1.6);
-          this.float(floor, e.idx, e.masked ? 'masked' : `−${e.energyLost}⚡`, GAS_COLOR, now);
+          if (e.masked) this.float(floor, e.idx, 'masked', GAS_COLOR, now);
+          else this.float(floor, e.idx, `−${e.energyLost}⚡`, DAMAGE_COLOR, now);
           break;
         case 'caveIn':
           this.shake(now, 6);
@@ -386,13 +391,16 @@ export class GridRenderer {
       glow.addColorStop(1, 'rgba(255,190,90,0)');
       ctx.fillStyle = glow;
       ctx.fillRect(x, y, s, s);
-      // Steps going down to the right.
+      // A ladder going down.
       ctx.fillStyle = '#3a2a1e';
-      const steps = 4;
-      const stepW = (s * 0.6) / steps;
-      const stepH = (s * 0.6) / steps;
-      for (let i = 0; i < steps; i++) {
-        ctx.fillRect(x + s * 0.2 + i * stepW, y + s * 0.2 + i * stepH, s * 0.6 - i * stepW, stepH);
+      const railW = Math.max(2, s * 0.07);
+      const top = y + s * 0.14;
+      const h = s * 0.54;
+      ctx.fillRect(x + s * 0.3, top, railW, h);
+      ctx.fillRect(x + s * 0.7 - railW, top, railW, h);
+      const rungs = 4;
+      for (let i = 0; i < rungs; i++) {
+        ctx.fillRect(x + s * 0.3, top + h * ((i + 0.6) / rungs) - railW / 2, s * 0.4, railW * 0.8);
       }
       ctx.fillStyle = '#ffcf7a';
       ctx.font = `700 ${Math.round(s * 0.34)}px system-ui, sans-serif`;
@@ -487,18 +495,7 @@ export class GridRenderer {
     const c = cell.content;
     if (c.kind === 'none') return;
     if (c.kind === 'gem') {
-      const r = bs * 0.2;
-      ctx.fillStyle = GEM_COLORS[c.tier];
-      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - r);
-      ctx.lineTo(cx + r * 0.8, cy);
-      ctx.lineTo(cx, cy + r);
-      ctx.lineTo(cx - r * 0.8, cy);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
+      drawGemIcon(ctx, c.tier, cx, cy, bs * 0.22);
       return;
     }
     const icon = { crystal: '⚡', chest: '🧰', gas: '☁️', caveIn: '🪨', stairs: '🪜' }[c.kind];
@@ -675,14 +672,44 @@ export class GridRenderer {
       ctx.font = `800 ${f.size}px system-ui, sans-serif`;
       const t = (now - f.start) / f.duration;
       ctx.globalAlpha = 1 - t * t;
+      const y = f.y - t * 36;
+      let x = f.x;
+      if (f.gem) {
+        // Icon then text, centred together on the cell.
+        const r = f.size * 0.45;
+        const w = ctx.measureText(f.text).width;
+        const iconX = f.x - (w + r * 2 + 3) / 2 + r;
+        drawGemIcon(ctx, f.gem, iconX, y, r);
+        x = iconX + r + 3 + w / 2;
+      }
       ctx.lineWidth = 4;
       ctx.strokeStyle = 'rgba(0,0,0,0.7)';
-      ctx.strokeText(f.text, f.x, f.y - t * 36);
+      ctx.strokeText(f.text, x, y);
       ctx.fillStyle = f.color;
-      ctx.fillText(f.text, f.x, f.y - t * 36);
+      ctx.fillText(f.text, x, y);
     }
     ctx.globalAlpha = 1;
   }
+}
+
+/** Draws the gem icon for `tier` centred at (cx, cy) with radius `r`. */
+function drawGemIcon(ctx: CanvasRenderingContext2D, tier: GemTier, cx: number, cy: number, r: number) {
+  const pts = GEM_SHAPES[tier];
+  ctx.beginPath();
+  pts.forEach(([px, py], i) => (i ? ctx.lineTo(cx + px * r, cy + py * r) : ctx.moveTo(cx + px * r, cy + py * r)));
+  ctx.closePath();
+  ctx.fillStyle = GEM_COLORS[tier];
+  ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+  ctx.lineWidth = 1.5;
+  ctx.fill();
+  ctx.stroke();
+  // Facet glint.
+  ctx.beginPath();
+  ctx.moveTo(cx - r * 0.25, cy - r * 0.45);
+  ctx.lineTo(cx + r * 0.1, cy - r * 0.1);
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+  ctx.lineWidth = Math.max(1, r * 0.15);
+  ctx.stroke();
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {

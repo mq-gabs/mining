@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from '../config';
-import { energyAfterTap, gemsKept, gemValue, tapsToBreak } from './economy';
+import { energyAfterTap, gasEnergyLoss, gemsKept, gemValue, tapsToBreak } from './economy';
 import { addEnergy, createRun, defaultModifiers, endRun, tapCell } from './run';
 import type { RunState } from './types';
 
@@ -22,6 +22,12 @@ describe('economy', () => {
     expect(gemValue('amethyst', 1.5)).toBe(8); // 7.5 -> 8
     expect(gemValue('quartz', 0.1)).toBe(1); // never below 1
     expect(gemValue('diamond', 1.1)).toBe(220);
+  });
+
+  it('gas loss is base plus a per-depth step', () => {
+    const g = CONFIG.hazards.gasEnergyLoss;
+    expect(gasEnergyLoss(1)).toBe(g.base + Math.floor(g.perDepth));
+    expect(gasEnergyLoss(20)).toBe(g.base + Math.floor(20 * g.perDepth));
   });
 
   it('keeps all gems when leaving, half (floored) when exhausted', () => {
@@ -80,6 +86,8 @@ describe('tapCell', () => {
     expect(after.gems).toBe(10);
     expect(after.floor.cells[idx].content.kind).toBe('none');
     expect(events).toContainEqual({ type: 'gem', idx, tier: 'amethyst', value: 10, doubled: false });
+    expect(after.stats.gemsByTier).toEqual({ amethyst: 1 });
+    expect(endRun(after, 'left').summary.gemsByTier).toEqual({ amethyst: 1 });
   });
 
   it('reveals stairs, and tapping them descends to a new floor for free', () => {

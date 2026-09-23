@@ -1,5 +1,5 @@
 import { CONFIG, GEM_TIERS, TOOL_IDS, type ToolId, type UpgradeId } from '../config';
-import { gemsKept } from '../game/economy';
+import { gemsKept, gemValue } from '../game/economy';
 import { computeHints } from '../game/hints';
 import { hasPerk, PERKS } from '../game/perks';
 import {
@@ -30,7 +30,7 @@ import { isModalOpen, showModal, type ModalAction } from './modal';
 import { renderShop } from './shop';
 import { MusicEngine } from './music';
 import { Sounds } from './sounds';
-import { GEM_COLORS, TREASURE_COLOR } from './theme';
+import { GEM_COLORS, gemIconSvg, TREASURE_COLOR } from './theme';
 import { TOOL_META } from './tools';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -63,6 +63,7 @@ export class App {
     $('btn-reset').addEventListener('click', () => this.confirmReset());
     $('grid').addEventListener('pointerdown', (e) => this.onGridPointer(e));
     $('perk-bar').addEventListener('click', () => this.showActivePerks());
+    $('hud-gems').addEventListener('click', () => this.showGemBreakdown());
     $('tool-bar').addEventListener('click', (e) => this.onToolButton(e));
     for (const btn of document.querySelectorAll('[data-mute]')) btn.addEventListener('click', () => this.toggleMute());
     $('btn-settings').addEventListener('click', () => this.showSettings());
@@ -350,6 +351,30 @@ export class App {
     ]);
   }
 
+  /** Gems found this run, per tier: count × value each = subtotal, adding up to the run total. */
+  private showGemBreakdown() {
+    const run = this.run;
+    if (!run || run.status !== 'playing' || isModalOpen()) return;
+    const counts = run.stats.gemsByTier;
+    const found = GEM_TIERS.filter((t) => counts[t]);
+    const rows = found
+      .map((t) => {
+        const each = gemValue(t, run.mods.gemValueMult);
+        return `<div class="gem-row">
+          ${gemIconSvg(t, 30)}
+          <span class="gem-name">${t[0].toUpperCase() + t.slice(1)}</span>
+          <span class="gem-math">${counts[t]} × ${each}</span>
+          <strong>= ${counts[t]! * each}</strong>
+        </div>`;
+      })
+      .join('');
+    const body = found.length
+      ? `<div class="gem-list">${rows}</div>
+         <div class="summary-row highlight"><span>Total</span><strong>${run.gems}</strong></div>`
+      : '<p>No gems yet. Blocks next to a gem sparkle.</p>';
+    showModal(`<h2>Gems this run</h2>${body}`, [{ label: 'Back to digging', primary: true, onClick: () => {} }]);
+  }
+
   private renderPerkBar(run: RunState) {
     const owned = (Object.keys(run.perks) as PerkId[]).filter((id) => hasPerk(run, id));
     const bar = $('perk-bar');
@@ -371,6 +396,7 @@ export class App {
     if (!run) return;
     $('hud-depth').textContent = `Floor ${run.depth}`;
     $('hud-gems-value').textContent = String(run.gems);
+    $('hud-gem-tiers').innerHTML = gemTiersHtml(run.stats.gemsByTier);
     const ratio = run.energy / run.mods.maxEnergy;
     $('energy-fill').style.width = `${Math.max(0, Math.min(1, ratio)) * 100}%`;
     $('energy-text').textContent = `⚡ ${run.energy} / ${run.mods.maxEnergy}`;
@@ -510,6 +536,7 @@ export class App {
          <div class="summary-row"><span>Depth reached</span><strong>Floor ${s.depth}</strong></div>
          <div class="summary-row"><span>Blocks broken</span><strong>${s.blocksBroken}</strong></div>
          <div class="summary-row"><span>Gems found</span><strong>${s.gemsFound}</strong></div>
+         ${Object.keys(s.gemsByTier).length ? `<div class="summary-row gem-tiers-row">${gemTiersHtml(s.gemsByTier)}</div>` : ''}
          <div class="summary-row highlight${s.gemsDoubled ? ' doubled' : ''}"><span>Gems kept${s.gemsDoubled ? ` <em>×${CONFIG.ads.gemMultiplier}</em>` : ''}</span><strong>${s.gemsKept}</strong></div>
        </div>
        ${opts.adFailed ? '<p class="ad-error">The ad couldn\'t play.</p>' : ''}
@@ -517,6 +544,13 @@ export class App {
       actions,
     );
   }
+}
+
+/** Per-tier gem counts (icon + count), lowest tier first. Tiers not found yet are left out. */
+function gemTiersHtml(counts: RunSummary['gemsByTier']): string {
+  return GEM_TIERS.filter((t) => counts[t])
+    .map((t) => `<span class="gem-tier">${gemIconSvg(t)}${counts[t]}</span>`)
+    .join('');
 }
 
 /** A perk's icon, name and description, with an optional stack note after the name. */

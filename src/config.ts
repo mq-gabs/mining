@@ -117,7 +117,8 @@ export const CONFIG = {
     gemsPerDepth: 0.4,
   },
   hazards: {
-    gasEnergyLoss: 5,
+    /** Gas energy loss = base + floor(depth * perDepth), so it keeps biting as max energy grows. */
+    gasEnergyLoss: { base: 8, perDepth: 0 },
     /** Max open cells (8-neighbourhood of the cave-in) turned back into dirt. */
     caveInCells: 3,
   },

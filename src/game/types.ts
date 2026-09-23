@@ -84,7 +84,8 @@ export interface RunState {
   /** In-run randomness (perk procs, cave-ins, perk offers), separate from floor generation. */
   rngState: number;
   status: RunStatus;
-  stats: { taps: number; blocksBroken: number };
+  /** `gemsByTier` counts gems picked up (a Lucky Strike double counts as two). */
+  stats: { taps: number; blocksBroken: number; gemsByTier: Partial<Record<GemTier, number>> };
 }
 
 export type RunEvent =
@@ -112,4 +113,5 @@ export interface RunSummary {
   gemsFound: number;
   gemsKept: number;
   blocksBroken: number;
+  gemsByTier: Partial<Record<GemTier, number>>;
 }

@@ -18,6 +18,7 @@ const summary = (over: Partial<RunSummary> = {}): RunSummary => ({
   gemsFound: 20,
   gemsKept: 20,
   blocksBroken: 30,
+  gemsByTier: {},
   ...over,
 });
 
