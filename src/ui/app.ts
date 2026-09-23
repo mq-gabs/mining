@@ -1,15 +1,16 @@
-import { CONFIG, type UpgradeId } from '../config';
+import { CONFIG, TOOL_IDS, type ToolId, type UpgradeId } from '../config';
 import { gemsKept } from '../game/economy';
 import { computeHints } from '../game/hints';
 import { hasPerk, PERKS } from '../game/perks';
 import { applyRunResult, buyUpgrade, modifiersFromProfile, type Profile } from '../game/progression';
-import { choosePerk, createRun, endRun, tapCell, type ActionResult } from '../game/run';
+import { choosePerk, createRun, endRun, tapCell, useTool, type ActionResult } from '../game/run';
 import { randomSeed } from '../game/rng';
 import type { EndReason, PerkId, RunEvent, RunState, RunSummary } from '../game/types';
 import { ProfileStore } from '../platform/storage';
 import { GridRenderer, type DrawView } from './gridRenderer';
 import { isModalOpen, showModal } from './modal';
 import { renderShop } from './shop';
+import { TOOL_META } from './tools';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -21,6 +22,8 @@ export class App {
   private profile: Profile = this.store.load();
   private run?: RunState;
   private view: DrawView = { hints: [], tierColors: false, showChests: false };
+  /** Tool the next grid tap will use; undefined means the pickaxe. */
+  private armed?: ToolId;
   private renderer: GridRenderer;
   private rafId = 0;
   /** A `?seed=123` URL param forces the first run's seed (for reproducing bugs). */
@@ -33,6 +36,7 @@ export class App {
     $('btn-reset').addEventListener('click', () => this.confirmReset());
     $('grid').addEventListener('pointerdown', (e) => this.onGridPointer(e));
     $('perk-bar').addEventListener('click', () => this.showActivePerks());
+    $('tool-bar').addEventListener('click', (e) => this.onToolButton(e));
     this.showHub();
     if (import.meta.env.DEV) this.exposeDebugHook();
   }
@@ -49,6 +53,7 @@ export class App {
           if (run) app.setRun(run);
         },
         tap: (idx: number) => app.run && app.apply(tapCell(app.run, idx)),
+        tool: (tool: ToolId, idx: number) => app.run && app.apply(useTool(app.run, tool, idx)),
         hints: () => app.view.hints,
       },
     });
@@ -101,6 +106,7 @@ export class App {
     console.info(`[deep-dig] run seed ${seed}`);
     $('screen-hub').hidden = true;
     $('screen-run').hidden = false;
+    this.armed = undefined;
     this.setRun(createRun(seed, modifiersFromProfile(this.profile)));
     this.loop();
   }
@@ -123,6 +129,7 @@ export class App {
   /** Applies the result of a game action: new state, effects, and follow-up UI. */
   private apply({ run, events }: ActionResult) {
     if (run === this.run) return;
+    if (events.some((e) => e.type === 'descend')) this.armed = undefined;
     this.setRun(run);
     this.renderer.handleEvents(run.floor, events, performance.now());
     this.onEvents(events);
@@ -135,7 +142,33 @@ export class App {
     if (!this.run || this.run.status !== 'playing' || isModalOpen()) return;
     const idx = this.renderer.cellAt(this.run.floor, e.clientX, e.clientY);
     if (idx === undefined) return;
+    const cell = this.run.floor.cells[idx];
+    // Revealed stairs always take you down, even with a tool armed.
+    if (this.armed && !(cell.open && cell.content.kind === 'stairs')) {
+      const result = useTool(this.run, this.armed, idx);
+      if (result.run === this.run) return this.rejectToolTarget();
+      this.armed = undefined;
+      this.apply(result);
+      return;
+    }
     this.apply(tapCell(this.run, idx));
+  }
+
+  private onToolButton(e: MouseEvent) {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-tool]');
+    if (!btn || btn.disabled || !this.run || this.run.status !== 'playing' || isModalOpen()) return;
+    const tool = btn.dataset.tool as ToolId | 'pickaxe';
+    // Tapping the armed tool again puts it away.
+    this.armed = tool === 'pickaxe' || tool === this.armed ? undefined : tool;
+    this.updateHud();
+  }
+
+  /** The armed tool can't be used there (out of reach, or nothing to affect). */
+  private rejectToolTarget() {
+    const btn = $('tool-bar').querySelector('.armed');
+    btn?.classList.remove('reject');
+    void (btn as HTMLElement | null)?.offsetWidth; // restart the animation
+    btn?.classList.add('reject');
   }
 
   private onEvents(events: RunEvent[]) {
@@ -203,6 +236,28 @@ export class App {
     $('energy-text').textContent = `⚡ ${run.energy} / ${run.mods.maxEnergy}`;
     $('energy').classList.toggle('low', ratio < LOW_ENERGY);
     this.renderPerkBar(run);
+    this.renderToolBar(run);
+  }
+
+  private renderToolBar(run: RunState) {
+    const pick = `<button class="tool${this.armed ? '' : ' armed'}" data-tool="pickaxe" aria-pressed="${!this.armed}">
+        <span class="tool-icon">⛏️</span><span class="tool-name">Pickaxe</span><span class="tool-count">∞</span></button>`;
+    const tools = TOOL_IDS.map((id) => {
+      const meta = TOOL_META[id];
+      const locked = run.mods.toolCharges[id] === 0;
+      const left = run.tools[id];
+      const armed = this.armed === id;
+      const count = locked ? '🔒' : String(left);
+      const title = locked ? `${meta.name}: unlock it in the shop` : `${meta.name}: ${meta.description}`;
+      return `<button class="tool${armed ? ' armed' : ''}${locked ? ' locked' : ''}" data-tool="${id}"
+          aria-pressed="${armed}" title="${title}" ${locked || left === 0 ? 'disabled' : ''}>
+        <span class="tool-icon">${meta.icon}</span><span class="tool-name">${meta.name}</span><span class="tool-count">${count}</span></button>`;
+    });
+    $('tool-bar').innerHTML = pick + tools.join('');
+    $('grid-wrap').classList.toggle('armed', !!this.armed);
+    const hint = $('aim-hint');
+    hint.hidden = !this.armed;
+    if (this.armed) hint.textContent = `${TOOL_META[this.armed].icon} Tap a block: ${TOOL_META[this.armed].description}`;
   }
 
   // ---------- Run endings ----------

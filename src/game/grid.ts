@@ -40,3 +40,21 @@ export function neighbors8(floor: Pick<Floor, 'cols' | 'rows'>, idx: number): nu
   }
   return out;
 }
+
+/** All cells within `radius` (Chebyshev distance) of `idx`, including itself: radius 1 is a 3×3 square. */
+export function square(floor: Pick<Floor, 'cols' | 'rows'>, idx: number, radius: number): number[] {
+  const { col, row } = toColRow(floor, idx);
+  const out: number[] = [];
+  for (let r = Math.max(0, row - radius); r <= Math.min(floor.rows - 1, row + radius); r++) {
+    for (let c = Math.max(0, col - radius); c <= Math.min(floor.cols - 1, col + radius); c++) {
+      out.push(r * floor.cols + c);
+    }
+  }
+  return out;
+}
+
+/** Every cell in the row of `idx`. */
+export function rowOf(floor: Pick<Floor, 'cols'>, idx: number): number[] {
+  const start = idx - (idx % floor.cols);
+  return Array.from({ length: floor.cols }, (_, i) => start + i);
+}

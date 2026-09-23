@@ -1,7 +1,33 @@
-import { CONFIG, UPGRADE_IDS, type UpgradeId } from '../config';
+import { CONFIG, TOOL_IDS, TOOL_UPGRADES, UPGRADE_IDS, type ToolId, type UpgradeDef, type UpgradeId } from '../config';
 import type { RunModifiers, RunSummary } from './types';
 
-export const PROFILE_VERSION = 1;
+/** v2: tool upgrades (dynamite, drill/scanner unlocks and charges). v1 saves load with those at 0. */
+export const PROFILE_VERSION = 2;
+
+export function upgradeDef(id: UpgradeId): UpgradeDef {
+  return CONFIG.upgrades.items[id];
+}
+
+/** An upgrade is available once the upgrade it `requires` (if any) has been bought. */
+export function isUpgradeAvailable(levels: Partial<Record<UpgradeId, number>>, id: UpgradeId): boolean {
+  const req = upgradeDef(id).requires;
+  return !req || (levels[req] ?? 0) > 0;
+}
+
+export function isToolUnlocked(levels: Partial<Record<UpgradeId, number>>, tool: ToolId): boolean {
+  const unlock = TOOL_UPGRADES[tool].unlock;
+  return !unlock || (levels[unlock] ?? 0) > 0;
+}
+
+/** Charges each tool starts a run with, from upgrade levels (0 when locked). */
+export function toolChargesFor(levels: Partial<Record<UpgradeId, number>>): Record<ToolId, number> {
+  const charges = {} as Record<ToolId, number>;
+  for (const tool of TOOL_IDS) {
+    const extra = (levels[TOOL_UPGRADES[tool].charges] ?? 0) * upgradeDef(TOOL_UPGRADES[tool].charges).perLevel;
+    charges[tool] = isToolUnlocked(levels, tool) ? CONFIG.tools[tool].baseCharges + extra : 0;
+  }
+  return charges;
+}
 
 /** Everything that persists between runs. */
 export interface Profile {
@@ -35,6 +61,9 @@ export function parseProfile(raw: unknown): Profile {
   for (const id of UPGRADE_IDS) {
     upgrades[id] = count(rawUpgrades[id], CONFIG.upgrades.items[id].maxLevel);
   }
+  for (const id of UPGRADE_IDS) {
+    if (!isUpgradeAvailable(upgrades, id)) upgrades[id] = 0;
+  }
   return {
     version: PROFILE_VERSION,
     gems: count(r.gems),
@@ -52,6 +81,7 @@ export function upgradeCost(id: UpgradeId, currentLevel: number): number | undef
 }
 
 export function canBuyUpgrade(profile: Profile, id: UpgradeId): boolean {
+  if (!isUpgradeAvailable(profile.upgrades, id)) return false;
   const cost = upgradeCost(id, profile.upgrades[id]);
   return cost !== undefined && profile.gems >= cost;
 }
@@ -76,6 +106,7 @@ export function modifiersFromProfile(profile: Profile): RunModifiers {
     power: CONFIG.pickaxe.basePower + lvl.power * u.power.perLevel,
     gemChanceBonus: lvl.luck * u.luck.perLevel,
     gemValueMult: 1 + lvl.gemValue * u.gemValue.perLevel,
+    toolCharges: toolChargesFor(lvl),
   };
 }
 

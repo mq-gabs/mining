@@ -193,6 +193,7 @@ body {
 }
 .shop-level {
   margin-left: 6px;
+  white-space: nowrap;
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
@@ -348,12 +349,105 @@ body {
   height: 100%;
   touch-action: none;
 }
+.grid-wrap.armed canvas {
+  cursor: crosshair;
+}
+.aim-hint {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  max-width: calc(100% - 16px);
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(255, 178, 63, 0.92);
+  color: var(--accent-ink);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  animation: fade-in 120ms ease-out;
+}
 .run-bar {
   display: flex;
+  flex-direction: column;
   gap: 8px;
 }
-.run-bar .btn {
-  flex: 1;
+
+/* ---------- Tools ---------- */
+.tool-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.tool {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-height: 56px;
+  padding: 4px 2px;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 80ms ease;
+}
+.tool:active:not(:disabled) {
+  transform: scale(0.95);
+}
+.tool-icon {
+  font-size: 20px;
+  line-height: 1.1;
+}
+.tool-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.tool-count {
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+.tool.armed {
+  border-color: var(--accent);
+  background: #3a2a10;
+  box-shadow: 0 0 10px rgba(255, 178, 63, 0.35);
+}
+.tool.armed .tool-name {
+  color: var(--accent);
+}
+.tool:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.tool.locked .tool-count {
+  font-size: 10px;
+}
+.tool.reject {
+  animation: reject 220ms ease-out;
+}
+
+@keyframes reject {
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
 }
 
 /* ---------- Perks ---------- */

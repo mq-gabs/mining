@@ -1,17 +1,20 @@
 import { CONFIG } from '../config';
 import { energyAfterTap, gemsKept, gemValue } from './economy';
 import { generateFloor } from './floor';
-import { isMinable, neighbors4, neighbors8 } from './grid';
+import { isMinable, neighbors4, neighbors8, rowOf, square } from './grid';
 import { hasPerk, PERKS, rollPerkOffer } from './perks';
+import { toolChargesFor } from './progression';
 import { hashSeed, Rng } from './rng';
 import type {
   EndReason,
+  Floor,
   PerkId,
   PerkOfferSource,
   RunEvent,
   RunModifiers,
   RunState,
   RunSummary,
+  ToolId,
 } from './types';
 
 export interface ActionResult {
@@ -25,6 +28,7 @@ export function defaultModifiers(): RunModifiers {
     power: CONFIG.pickaxe.basePower,
     gemChanceBonus: 0,
     gemValueMult: 1,
+    toolCharges: toolChargesFor({}),
   };
 }
 
@@ -34,7 +38,8 @@ export function createRun(seed: number, mods: RunModifiers = defaultModifiers())
     depth: 1,
     floor: generateFloor(seed, 1, { gemChanceBonus: mods.gemChanceBonus }),
     energy: mods.maxEnergy,
-    mods: { ...mods },
+    mods: structuredClone(mods),
+    tools: { ...mods.toolCharges },
     gems: 0,
     perks: {},
     rngState: hashSeed(seed, 0x5eed),
@@ -88,6 +93,50 @@ export function tapCell(prev: RunState, idx: number): ActionResult {
   const tremorTargets = neighbors4(run.floor, idx).filter((n) => !run.floor.cells[n].open);
   if (damageBlock(ctx, idx, run.mods.power) && hasPerk(run, 'tremor')) {
     for (const n of tremorTargets) damageBlock(ctx, n, CONFIG.perks.tremor.damage);
+  }
+  return finish(ctx);
+}
+
+/** Tools can target any open cell or any block the pickaxe could reach. */
+export function canTarget(floor: Floor, idx: number): boolean {
+  const cell = floor.cells[idx];
+  return !!cell && (cell.open || isMinable(floor, idx));
+}
+
+/** Cells a tool aimed at `idx` would affect (before filtering out open/already-scanned ones). */
+export function toolArea(floor: Floor, tool: ToolId, idx: number): number[] {
+  switch (tool) {
+    case 'dynamite':
+      return square(floor, idx, CONFIG.tools.dynamite.radius);
+    case 'drill':
+      return rowOf(floor, idx);
+    case 'scanner':
+      return square(floor, idx, CONFIG.tools.scanner.radius);
+  }
+}
+
+/**
+ * Uses one charge of a tool on cell `idx`. Tools cost no energy. Returns the same state (no-op) when
+ * the tool has no charges, the target is out of reach, or the tool would affect nothing.
+ */
+export function useTool(prev: RunState, tool: ToolId, idx: number): ActionResult {
+  const noop = { run: prev, events: [] };
+  if (prev.status !== 'playing' || prev.tools[tool] <= 0 || !canTarget(prev.floor, idx)) return noop;
+  const cells = toolArea(prev.floor, tool, idx).filter((n) => {
+    const c = prev.floor.cells[n];
+    return !c.open && !(tool === 'scanner' && c.scanned);
+  });
+  if (cells.length === 0) return noop;
+
+  const ctx = begin(prev);
+  const { run } = ctx;
+  run.tools[tool]--;
+  ctx.events.push({ type: 'tool', tool, idx, cells });
+  for (const n of cells) {
+    const cell = run.floor.cells[n];
+    if (tool === 'scanner') cell.scanned = true;
+    // A cave-in earlier in the same blast can refill cells; those stay closed.
+    else if (!cell.open) breakBlock(ctx, n, { triggerGas: tool !== 'dynamite' });
   }
   return finish(ctx);
 }
@@ -174,8 +223,9 @@ function breakBlock(ctx: Ctx, idx: number, opts: BreakOptions = {}) {
   }
 }
 
-/** Pauses the run for a perk choice. Returns false if no perks are left to offer. */
+/** Pauses the run for a perk choice. Returns false if no perks are left or one is already pending. */
 function offerPerk(ctx: Ctx, source: PerkOfferSource): boolean {
+  if (ctx.run.status !== 'playing') return false;
   const choices = rollPerkOffer(ctx.run, ctx.rng);
   if (choices.length === 0) return false;
   ctx.run.status = 'choosingPerk';

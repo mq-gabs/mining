@@ -5,8 +5,9 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
 
 ## Status
 
-- Done: M1 core loop, M2 surface/shop/save, M3 roguelike layer (hints, hazards, chests, crystals, perks).
-- Next: M4 tools (Dynamite, Drill, Scanner + unlocks/charges), M5 juice/sound/mute toggle, M6 ads (`AdService` mock).
+- Done: M1 core loop, M2 surface/shop/save, M3 roguelike layer (hints, hazards, chests, crystals, perks),
+  M4 tools (Dynamite, Drill, Scanner via `useTool` in `run.ts`; unlocks/charges as upgrades with `requires`).
+- Next: M5 juice/sound/mute toggle, M6 ads (`AdService` mock).
 
 ## Commands
 
@@ -41,6 +42,9 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
 - Crystals thin out with depth, and the block mix keeps hardening past floor 16. Both are energy sinks
   that guarantee runs end.
 - Hints use orthogonal neighbours (same as mining adjacency); cave-ins use the 8-neighbourhood.
+- Tools can only target open cells or blocks the pickaxe could reach, so they can't skip exploration.
+  A tool that would affect nothing (e.g. rescanning a known area) is a no-op and keeps its charge.
+- Only one perk offer can be pending: a second perk chest in the same dynamite blast pays out gems instead.
 
 ## Balance workflow
 
@@ -49,11 +53,12 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   human targets.
 - After any change to mechanics or config, rerun the sim and report the table. A test in `roguelike.test.ts`
   asserts that a maxed-out player still runs out of energy. Keep it passing.
-- Known open issue: upgrades bought per run rise over time (~0.8 → 2.7) instead of slowing down.
+- Known open issue: upgrades bought per run rise over time instead of slowing down (~1.0 → 4.1 by run 10
+  since M4 added five cheap tool upgrades; it was ~0.8 → 2.7 before).
 
 ## Testing gotchas
 
-- Dev builds expose `window.__deepDig` (`run` get/set, `tap(idx)`, `hints()`) for scripted browser tests.
+- Dev builds expose `window.__deepDig` (`run` get/set, `tap(idx)`, `tool(toolId, idx)`, `hints()`) for scripted browser tests.
   It is not active in production builds.
 - For browser checks, Playwright lives in the session scratchpad, not in this project. Don't add it as a dependency.
 - Don't `pkill -f vite-node` or `pkill -f vite`: the pattern matches your own shell command and kills it.

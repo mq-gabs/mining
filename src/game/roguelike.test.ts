@@ -200,7 +200,13 @@ describe('perks', () => {
   });
 
   it('runs always end: a bot with every perk and max upgrades still runs dry', () => {
-    let run = createRun(4242, { maxEnergy: 200, power: 11, gemChanceBonus: 0.5, gemValueMult: 2 });
+    let run = createRun(4242, {
+      maxEnergy: 200,
+      power: 11,
+      gemChanceBonus: 0.5,
+      gemValueMult: 2,
+      toolCharges: { dynamite: 6, drill: 6, scanner: 6 },
+    });
     for (let steps = 0; run.status !== 'outOfEnergy' && steps < 20000; steps++) {
       if (run.status === 'choosingPerk') {
         const c = run.perkOffer!.choices;

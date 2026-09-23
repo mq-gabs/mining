@@ -57,11 +57,12 @@ describe('modifiersFromProfile', () => {
       power: 1,
       gemChanceBonus: 0,
       gemValueMult: 1,
+      toolCharges: { dynamite: 1, drill: 0, scanner: 0 },
     });
   });
 
   it('applies per-level effects', () => {
-    const p = { ...newProfile(), upgrades: { power: 2, energy: 3, luck: 4, gemValue: 5 } };
+    const p = { ...newProfile(), upgrades: { ...newProfile().upgrades, power: 2, energy: 3, luck: 4, gemValue: 5 } };
     const m = modifiersFromProfile(p);
     expect(m.power).toBe(3);
     expect(m.maxEnergy).toBe(80);
@@ -83,7 +84,7 @@ describe('applyRunResult', () => {
 
 describe('parseProfile', () => {
   it('round-trips a saved profile', () => {
-    const p = { ...newProfile(), gems: 99, bestDepth: 7, upgrades: { power: 1, energy: 2, luck: 0, gemValue: 3 } };
+    const p = { ...newProfile(), gems: 99, bestDepth: 7, upgrades: { ...newProfile().upgrades, power: 1, energy: 2, luck: 0, gemValue: 3 } };
     expect(parseProfile(JSON.parse(JSON.stringify(p)))).toEqual(p);
   });
 

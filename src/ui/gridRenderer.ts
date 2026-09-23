@@ -4,11 +4,13 @@ import { Rng } from '../game/rng';
 import type { Cell, Floor, RunEvent } from '../game/types';
 import {
   BACKDROP_COLOR,
+  BLAST_COLOR,
   BLOCK_COLORS,
   CRYSTAL_COLOR,
   DUST_COLOR,
   GAS_COLOR,
   GEM_COLORS,
+  SCAN_COLOR,
   SPARKLE_COLOR,
   TREASURE_COLOR,
   TUNNEL_COLOR,
@@ -142,6 +144,15 @@ export class GridRenderer {
         case 'caveIn':
           this.screenShakeAt = now;
           this.float(floor, e.idx, 'Cave-in!', '#e8c9a0', now, 16);
+          break;
+        case 'tool':
+          if (e.tool === 'dynamite') {
+            this.screenShakeAt = now;
+            this.puff(floor, e.idx, BLAST_COLOR, now, 2.2);
+          } else {
+            const color = e.tool === 'scanner' ? 'rgba(111,224,255,0.45)' : 'rgba(255,220,160,0.5)';
+            for (const idx of e.cells) this.puff(floor, idx, color, now, 0.7);
+          }
           break;
         case 'descend':
           this.hitTimes.clear();
@@ -294,6 +305,45 @@ export class GridRenderer {
       roundRect(ctx, bx, by, bs, bs, 6);
       ctx.fill();
     }
+    if (cell.scanned) this.drawScanned(cell, bx, by, bs);
+  }
+
+  /** Scanner result: a cyan frame and the block's content as an icon (nothing when empty). */
+  private drawScanned(cell: Cell, bx: number, by: number, bs: number) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = SCAN_COLOR;
+    ctx.globalAlpha = 0.7;
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, bx + 3, by + 3, bs - 6, bs - 6, 5);
+    ctx.stroke();
+    ctx.restore();
+
+    const cx = bx + bs / 2;
+    const cy = by + bs / 2;
+    const c = cell.content;
+    if (c.kind === 'none') return;
+    if (c.kind === 'gem') {
+      const r = bs * 0.2;
+      ctx.fillStyle = GEM_COLORS[c.tier];
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r);
+      ctx.lineTo(cx + r * 0.8, cy);
+      ctx.lineTo(cx, cy + r);
+      ctx.lineTo(cx - r * 0.8, cy);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      return;
+    }
+    const icon = { crystal: '⚡', chest: '🧰', gas: '☁️', caveIn: '🪨', stairs: '🪜' }[c.kind];
+    ctx.font = `${Math.round(bs * 0.4)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(icon, cx, cy + 1);
   }
 
   /** Three crack stages depending on how much HP is gone. */

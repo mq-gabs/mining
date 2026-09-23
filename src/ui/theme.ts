@@ -23,3 +23,5 @@ export const DUST_COLOR = '#efe3d3';
 export const TREASURE_COLOR = '#ffc94a';
 export const CRYSTAL_COLOR = '#7fe3ff';
 export const GAS_COLOR = '#9be86b';
+export const SCAN_COLOR = '#6fe0ff';
+export const BLAST_COLOR = 'rgba(255,150,60,0.7)';

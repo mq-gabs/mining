@@ -44,8 +44,12 @@
           </div>
           <button class="perk-bar empty" id="perk-bar" aria-label="Active perks"></button>
         </header>
-        <div class="grid-wrap" id="grid-wrap"><canvas id="grid"></canvas></div>
+        <div class="grid-wrap" id="grid-wrap">
+          <canvas id="grid"></canvas>
+          <div class="aim-hint" id="aim-hint" hidden></div>
+        </div>
         <footer class="run-bar">
+          <div class="tool-bar" id="tool-bar" role="toolbar" aria-label="Tools"></div>
           <button id="btn-leave" class="btn">Leave Mine</button>
         </footer>
       </section>

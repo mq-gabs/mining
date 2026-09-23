@@ -1,6 +1,6 @@
-import type { BlockType, GemTier } from '../config';
+import type { BlockType, GemTier, ToolId } from '../config';
 
-export type { BlockType, GemTier };
+export type { BlockType, GemTier, ToolId };
 
 export type PerkId =
   | 'sharpEdge'
@@ -35,6 +35,8 @@ export interface Cell {
   maxHp: number;
   /** Hidden until the block breaks. Once collected/triggered, becomes `none`. */
   content: Content;
+  /** The Scanner revealed this block's content without breaking it. */
+  scanned?: boolean;
 }
 
 export interface Floor {
@@ -55,6 +57,8 @@ export interface RunModifiers {
   gemChanceBonus: number;
   /** Multiplier on gem values (1 = base). */
   gemValueMult: number;
+  /** Charges each tool starts the run with (0 = locked). */
+  toolCharges: Record<ToolId, number>;
 }
 
 export type RunStatus = 'playing' | 'choosingPerk' | 'outOfEnergy' | 'ended';
@@ -69,6 +73,8 @@ export interface RunState {
   mods: RunModifiers;
   /** Gems collected this run (before any end-of-run penalty). */
   gems: number;
+  /** Tool charges left this run. */
+  tools: Record<ToolId, number>;
   /** Stack count per perk taken this run. */
   perks: Partial<Record<PerkId, number>>;
   /** Present while status is 'choosingPerk'. */
@@ -89,6 +95,7 @@ export type RunEvent =
   | { type: 'gas'; idx: number; energyLost: number; masked: boolean }
   | { type: 'caveIn'; idx: number; filled: number[] }
   | { type: 'stairsRevealed'; idx: number }
+  | { type: 'tool'; tool: ToolId; idx: number; cells: number[] }
   | { type: 'descend'; depth: number; energyRestored: number }
   | { type: 'perkOffer'; source: PerkOfferSource; choices: PerkId[] }
   | { type: 'perkChosen'; perk: PerkId }

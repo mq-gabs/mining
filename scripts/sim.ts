@@ -14,8 +14,8 @@ import {
   upgradeCost,
   type Profile,
 } from '../src/game/progression';
-import { choosePerk, createRun, endRun, tapCell } from '../src/game/run';
-import type { PerkId, RunState, RunSummary } from '../src/game/types';
+import { canTarget, choosePerk, createRun, endRun, tapCell, toolArea, useTool } from '../src/game/run';
+import type { Cell, PerkId, RunState, RunSummary, ToolId } from '../src/game/types';
 
 /** Bot's perk preference, best first. */
 const PERK_PRIORITY: PerkId[] = [
@@ -27,21 +27,37 @@ declare const process: { argv: string[] };
 
 type Rand = () => number;
 
+/** What the bot thinks of a scanned block's content (negative = worth going for). */
+function scannedScore(c: Cell): number {
+  if (!c.scanned) return 0;
+  switch (c.content.kind) {
+    case 'gem': return -1.5;
+    case 'crystal': case 'chest': return -1;
+    case 'gas': case 'caveIn': return 3;
+    default: return 0;
+  }
+}
+
 function pickTarget(run: RunState, rand: Rand): number | undefined {
   const f = run.floor;
   const stairsOpen = f.cells.findIndex((c) => c.open && c.content.kind === 'stairs');
   if (stairsOpen >= 0) return stairsOpen;
   const searchRow = f.rows - CONFIG.grid.stairsBottomRows;
+  const knownStairs = f.cells.findIndex((c) => c.scanned && c.content.kind === 'stairs');
   let best: number | undefined;
   let bestScore = Infinity;
   const hints = computeHints(f);
   f.cells.forEach((c, i) => {
     const hint = hints[i];
     if (!hint) return;
-    const { row } = toColRow(f, i);
-    const depthPenalty = row < searchRow ? (searchRow - row) * 0.8 : 0;
+    const { row, col } = toColRow(f, i);
+    let depthPenalty = row < searchRow ? (searchRow - row) * 0.8 : 0;
+    if (knownStairs >= 0) {
+      const s = toColRow(f, knownStairs);
+      depthPenalty = (Math.abs(s.row - row) + Math.abs(s.col - col)) * 1.5;
+    }
     // Mild hint use: sparkles are worth a detour, dust is worth avoiding.
-    const hintScore = (hint.gemNear ? -0.7 : 0) + (hint.hazardNear ? 0.7 : 0);
+    const hintScore = (hint.gemNear ? -0.7 : 0) + (hint.hazardNear ? 0.7 : 0) + scannedScore(c);
     const score = tapsToBreak(c.hp, run.mods.power) + depthPenalty + hintScore + rand() * 0.5;
     if (score < bestScore) {
       bestScore = score;
@@ -49,6 +65,38 @@ function pickTarget(run: RunState, rand: Rand): number | undefined {
     }
   });
   return best;
+}
+
+/** Taps the pickaxe would need to clear a tool's area (the value of using the tool there). */
+function areaTaps(run: RunState, tool: ToolId, idx: number): number {
+  return toolArea(run.floor, tool, idx)
+    .map((n) => run.floor.cells[n])
+    .filter((c) => !c.open)
+    .reduce((sum, c) => sum + tapsToBreak(c.hp, run.mods.power), 0);
+}
+
+/**
+ * A simple tool policy: scan when entering the stairs zone, drill a stairs-zone row when it's
+ * expensive, and dynamite a hard target. Returns undefined to fall back to the pickaxe.
+ */
+function pickTool(run: RunState, target: number): { tool: ToolId; idx: number } | undefined {
+  const f = run.floor;
+  const t = f.cells[target];
+  if (t.open) return undefined;
+  const searchRow = f.rows - CONFIG.grid.stairsBottomRows;
+  const { row } = toColRow(f, target);
+  const stairsKnown = f.cells.some((c) => c.scanned && c.content.kind === 'stairs');
+  const unscanned = toolArea(f, 'scanner', target).filter((n) => !f.cells[n].open && !f.cells[n].scanned).length;
+  if (run.tools.scanner > 0 && !stairsKnown && row >= searchRow - 1 && unscanned >= 4) {
+    return { tool: 'scanner', idx: target };
+  }
+  if (run.tools.drill > 0 && !stairsKnown && row >= searchRow && areaTaps(run, 'drill', target) >= 6) {
+    return { tool: 'drill', idx: target };
+  }
+  if (run.tools.dynamite > 0 && tapsToBreak(t.hp, run.mods.power) >= 2 && areaTaps(run, 'dynamite', target) >= 8) {
+    return { tool: 'dynamite', idx: target };
+  }
+  return undefined;
 }
 
 /** Plays one run. Leaves on arrival at a floor if energy looks too low to clear it. */
@@ -70,7 +118,8 @@ function playRun(seed: number, profile: Profile, rand: Rand): RunSummary {
     const t = pickTarget(run, rand);
     if (t === undefined) break;
     const depth = run.depth;
-    const next = tapCell(run, t).run;
+    const tool = pickTool(run, t);
+    const next = tool && canTarget(run.floor, tool.idx) ? useTool(run, tool.tool, tool.idx).run : tapCell(run, t).run;
     if (next === run) {
       throw new Error(`bot stuck: seed ${seed} depth ${run.depth} cell ${t} ${JSON.stringify(run.floor.cells[t])}`);
     }
@@ -101,7 +150,7 @@ function shop(profile: Profile): { profile: Profile; bought: number } {
 function simulateCareers(players: number, runs: number) {
   let rs = 1;
   const rand: Rand = () => (rs = (rs * 16807) % 2147483647) / 2147483647;
-  const rows = Array.from({ length: runs }, () => ({ depth: 0, kept: 0, bought: 0, left: 0, lvl: 0 }));
+  const rows = Array.from({ length: runs }, () => ({ depth: 0, kept: 0, bought: 0, left: 0, lvl: 0, tools: 0 }));
   for (let p = 0; p < players; p++) {
     let profile = newProfile();
     for (let r = 0; r < runs; r++) {
@@ -115,13 +164,15 @@ function simulateCareers(players: number, runs: number) {
       row.bought += res.bought / players;
       row.left += (summary.reason === 'left' ? 1 : 0) / players;
       row.lvl += Object.values(profile.upgrades).reduce((a, b) => a + b, 0) / players;
+      const charges = modifiersFromProfile(profile).toolCharges;
+      row.tools += (charges.dynamite + charges.drill + charges.scanner) / players;
     }
   }
-  console.log('run | avg depth | gems kept | upgrades bought | total levels | left voluntarily');
+  console.log('run | avg depth | gems kept | upgrades bought | total levels | left voluntarily | tool charges');
   rows.forEach((r, i) =>
     console.log(
       `${String(i + 1).padStart(3)} | ${r.depth.toFixed(1).padStart(9)} | ${r.kept.toFixed(0).padStart(9)} | ` +
-        `${r.bought.toFixed(2).padStart(15)} | ${r.lvl.toFixed(1).padStart(12)} | ${(r.left * 100).toFixed(0).padStart(3)}%`,
+        `${r.bought.toFixed(2).padStart(15)} | ${r.lvl.toFixed(1).padStart(12)} | ${(r.left * 100).toFixed(0).padStart(3)}% | ${r.tools.toFixed(1).padStart(4)}`,
     ),
   );
 }

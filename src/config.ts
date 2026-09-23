@@ -2,7 +2,29 @@
 
 export type BlockType = 'dirt' | 'stone' | 'hard' | 'obsidian';
 export type GemTier = 'quartz' | 'amethyst' | 'sapphire' | 'ruby' | 'diamond';
-export type UpgradeId = 'power' | 'energy' | 'luck' | 'gemValue';
+export type ToolId = 'dynamite' | 'drill' | 'scanner';
+export type UpgradeId =
+  | 'power'
+  | 'energy'
+  | 'luck'
+  | 'gemValue'
+  | 'dynamite'
+  | 'drillUnlock'
+  | 'drill'
+  | 'scannerUnlock'
+  | 'scanner';
+
+export interface UpgradeDef {
+  name: string;
+  icon: string;
+  baseCost: number;
+  maxLevel: number;
+  perLevel: number;
+  /** Only buyable (and shown) once this upgrade has at least one level. */
+  requires?: UpgradeId;
+  /** A one-level upgrade that unlocks a tool. */
+  unlocks?: ToolId;
+}
 
 export const CONFIG = {
   grid: {
@@ -119,6 +141,19 @@ export const CONFIG = {
     greed: { gemValueBonus: 0.5, maxEnergyPenalty: 10 },
   },
 
+  /**
+   * Tools: limited charges per run, no energy cost. `baseCharges` is what an unlocked tool starts
+   * with before Charges upgrades. Which upgrade unlocks a tool is in `TOOL_UPGRADES` below.
+   */
+  tools: {
+    /** Breaks every block within `radius` (1 = 3×3). Doesn't release gas. */
+    dynamite: { baseCharges: 1, radius: 1 },
+    /** Breaks the whole row of the target. */
+    drill: { baseCharges: 1 },
+    /** Reveals the contents of every block within `radius` without breaking them. */
+    scanner: { baseCharges: 1, radius: 1 },
+  } satisfies Record<ToolId, { baseCharges: number; radius?: number }>,
+
   /** Permanent upgrades bought on the surface. Cost of level n (0-based) = baseCost * costGrowth^n. */
   upgrades: {
     costGrowth: 1.6,
@@ -127,13 +162,32 @@ export const CONFIG = {
       energy: { name: 'Max Energy', icon: '⚡', baseCost: 15, maxLevel: 15, perLevel: 10 },
       luck: { name: 'Luck', icon: '🍀', baseCost: 30, maxLevel: 10, perLevel: 0.05 },
       gemValue: { name: 'Gem Value', icon: '💎', baseCost: 40, maxLevel: 10, perLevel: 0.1 },
-    } satisfies Record<
-      UpgradeId,
-      { name: string; icon: string; baseCost: number; maxLevel: number; perLevel: number }
-    >,
+      dynamite: { name: 'Dynamite Charges', icon: '🧨', baseCost: 50, maxLevel: 5, perLevel: 1 },
+      drillUnlock: { name: 'Unlock Drill', icon: '🔩', baseCost: 150, maxLevel: 1, perLevel: 1, unlocks: 'drill' },
+      drill: { name: 'Drill Charges', icon: '🔩', baseCost: 60, maxLevel: 5, perLevel: 1, requires: 'drillUnlock' },
+      scannerUnlock: { name: 'Unlock Scanner', icon: '📡', baseCost: 250, maxLevel: 1, perLevel: 1, unlocks: 'scanner' },
+      scanner: { name: 'Scanner Charges', icon: '📡', baseCost: 60, maxLevel: 5, perLevel: 1, requires: 'scannerUnlock' },
+    } satisfies Record<UpgradeId, UpgradeDef>,
   },
 } as const;
 
 export const BLOCK_TYPES: BlockType[] = ['dirt', 'stone', 'hard', 'obsidian'];
 export const GEM_TIERS: GemTier[] = ['quartz', 'amethyst', 'sapphire', 'ruby', 'diamond'];
-export const UPGRADE_IDS: UpgradeId[] = ['power', 'energy', 'luck', 'gemValue'];
+export const UPGRADE_IDS: UpgradeId[] = [
+  'power',
+  'energy',
+  'luck',
+  'gemValue',
+  'dynamite',
+  'drillUnlock',
+  'drill',
+  'scannerUnlock',
+  'scanner',
+];
+export const TOOL_IDS: ToolId[] = ['dynamite', 'drill', 'scanner'];
+/** Upgrade that unlocks each tool (none: unlocked at start) and the one that adds charges. */
+export const TOOL_UPGRADES: Record<ToolId, { unlock?: UpgradeId; charges: UpgradeId }> = {
+  dynamite: { charges: 'dynamite' },
+  drill: { unlock: 'drillUnlock', charges: 'drill' },
+  scanner: { unlock: 'scannerUnlock', charges: 'scanner' },
+};
