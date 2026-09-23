@@ -722,6 +722,23 @@ body {
 .btn.perk-card:hover {
   border-color: var(--accent);
 }
+.perk-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+.btn.perk-card[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: #3a2a1a;
+  box-shadow: 0 0 0 2px var(--accent), 0 0 14px rgba(255, 178, 63, 0.45);
+}
+.btn.perk-confirm:disabled {
+  opacity: 0.45;
+  box-shadow: none;
+  transform: none;
+  cursor: default;
+}
 .perk-row {
   background: var(--panel-2);
   border-radius: 12px;

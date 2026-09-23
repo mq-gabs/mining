@@ -80,7 +80,7 @@ export class App {
     // Generic click for plain buttons (buying, perks, tools and mute have their own sounds).
     document.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest('.btn');
-      if (btn && !btn.matches('.buy-btn, .perk-card')) this.sounds.click();
+      if (btn && !btn.matches('.buy-btn, .perk-confirm')) this.sounds.click();
     });
     this.applySoundSettings();
     this.renderMute();
@@ -365,14 +365,40 @@ export class App {
     const subtitle = source === 'chest' ? 'You found a relic in the chest.' : `You reached floor ${run.depth}.`;
     if (source === 'floor') this.sounds.perkOffer();
     this.music.perkChord();
+    // Select, then confirm: a player tapping fast can break a perk chest, and a one-tap pick would choose
+    // a perk before they've read the options.
+    const cards = choices
+      .map(
+        (id) => `<button class="btn perk-card" data-perk="${id}" aria-pressed="false">
+          ${perkCardHtml(id, run.perks[id] ? `(have ${run.perks[id]})` : '')}</button>`,
+      )
+      .join('');
+    let selected: PerkId | undefined;
     showModal(
-      `<h2>Choose a perk</h2><p>${subtitle} Perks last until the end of this run.</p>`,
-      choices.map((id) => ({
-        html: perkCardHtml(id, run.perks[id] ? `(have ${run.perks[id]})` : ''),
-        className: 'perk-card',
-        onClick: () => this.apply(choosePerk(run, id)),
-      })),
+      `<h2>Choose a perk</h2><p>${subtitle} Perks last until the end of this run.</p>
+       <div class="perk-choices" role="group" aria-label="Perks">${cards}</div>`,
+      [
+        {
+          label: 'Take perk',
+          primary: true,
+          className: 'perk-confirm',
+          id: 'perk-confirm',
+          disabled: true,
+          onClick: () => selected && this.apply(choosePerk(run, selected)),
+        },
+      ],
     );
+    for (const card of document.querySelectorAll<HTMLButtonElement>('.perk-choices .perk-card')) {
+      card.addEventListener('click', () => {
+        selected = card.dataset.perk as PerkId;
+        for (const c of document.querySelectorAll('.perk-choices .perk-card')) {
+          c.setAttribute('aria-pressed', String(c === card));
+        }
+        const confirm = $<HTMLButtonElement>('perk-confirm');
+        confirm.disabled = false;
+        confirm.textContent = `Take ${PERKS[selected].name}`;
+      });
+    }
   }
 
   private showActivePerks() {

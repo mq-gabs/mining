@@ -6,6 +6,9 @@ export interface ModalAction {
   primary?: boolean;
   /** Extra button class, e.g. 'danger'. */
   className?: string;
+  /** Element id, so the body's own controls can enable the button later. */
+  id?: string;
+  disabled?: boolean;
   onClick: () => void;
 }
 
@@ -20,6 +23,8 @@ export function showModal(bodyHtml: string, actions: ModalAction[]) {
   for (const a of actions) {
     const btn = document.createElement('button');
     btn.className = ['btn', a.primary && 'primary', a.className].filter(Boolean).join(' ');
+    if (a.id) btn.id = a.id;
+    btn.disabled = !!a.disabled;
     if (a.html) btn.innerHTML = a.html;
     else btn.textContent = a.label ?? '';
     btn.addEventListener('click', () => {
