@@ -20,9 +20,16 @@ export function gemWeightsForDepth(depth: number): Partial<Record<GemTier, numbe
   const weights: Partial<Record<GemTier, number>> = {};
   for (const tier of GEM_TIERS) {
     const t = CONFIG.gems.tiers[tier];
-    if (depth >= t.fromDepth) weights[tier] = t.weight;
+    if (depth < t.fromDepth) continue;
+    weights[tier] = t.weight * Math.pow(1 - CONFIG.gems.tierWeightDecayPerDepth, depth - t.fromDepth);
   }
   return weights;
+}
+
+/** Chance for a block on this floor to hold a gem, before stairs/other contents. */
+export function gemChanceForDepth(depth: number, bonus = 0): number {
+  const depthBonus = Math.min(CONFIG.gems.maxDepthChanceBonus, (depth - 1) * CONFIG.gems.chancePerDepth);
+  return Math.min(1, CONFIG.gems.baseChance + depthBonus + bonus);
 }
 
 export function floorSeed(runSeed: number, depth: number): number {
@@ -36,7 +43,7 @@ export function generateFloor(runSeed: number, depth: number, opts: FloorOptions
   const rng = new Rng(seed);
   const blockWeights = blockWeightsForDepth(depth);
   const gemWeights = gemWeightsForDepth(depth);
-  const gemChance = Math.min(1, CONFIG.gems.baseChance + (opts.gemChanceBonus ?? 0));
+  const gemChance = gemChanceForDepth(depth, opts.gemChanceBonus);
 
   const cells: Cell[] = [];
   for (let i = 0; i < cols * rows; i++) {

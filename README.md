@@ -16,7 +16,7 @@ Other scripts:
 | `npm test` | Vitest unit tests (floor generation, energy/gem math) |
 | `npm run build` | Typecheck + production build into `dist/` |
 | `npm run preview` | Serve the production build |
-| `npm run sim [-- 1000]` | Balance simulator: a bot plays N runs and reports average depth and gems |
+| `npm run sim [-- players runs]` | Balance simulator: bots play whole careers (run → shop → run) and report depth, gems and upgrades per run |
 
 Add `?seed=12345` to the URL to replay a specific run. Each run logs its seed to the console and shows it on the summary screen.
 
@@ -24,4 +24,7 @@ Add `?seed=12345` to the URL to replay a specific run. Each run logs its seed to
 
 - `src/config.ts`: every balance number (grid size, HP, block mix per depth, gem tiers, energy).
 - `src/game/`: pure game logic and state (no DOM). `run.ts` takes a state and returns a new state plus events.
+- `src/platform/`: browser services (localStorage save with in-memory fallback).
 - `src/ui/`: canvas renderer, HUD, screens, modals. Reads game state and reacts to events.
+
+Progress is saved to localStorage under `deep-dig/profile`. Use "Reset progress" on the hub to wipe it.

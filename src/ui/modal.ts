@@ -1,6 +1,8 @@
 export interface ModalAction {
   label: string;
   primary?: boolean;
+  /** Extra button class, e.g. 'danger'. */
+  className?: string;
   onClick: () => void;
 }
 
@@ -14,7 +16,7 @@ export function showModal(bodyHtml: string, actions: ModalAction[]) {
   row.className = 'modal-actions';
   for (const a of actions) {
     const btn = document.createElement('button');
-    btn.className = `btn${a.primary ? ' primary' : ''}`;
+    btn.className = ['btn', a.primary && 'primary', a.className].filter(Boolean).join(' ');
     btn.textContent = a.label;
     btn.addEventListener('click', () => {
       hideModal();

@@ -1,24 +1,22 @@
-import { CONFIG } from '../config';
+import { CONFIG, type UpgradeId } from '../config';
 import { gemsKept } from '../game/economy';
-import { createRun, defaultModifiers, endRun, tapCell } from '../game/run';
+import { applyRunResult, buyUpgrade, modifiersFromProfile, type Profile } from '../game/progression';
+import { createRun, endRun, tapCell } from '../game/run';
 import { randomSeed } from '../game/rng';
 import type { EndReason, RunEvent, RunState, RunSummary } from '../game/types';
+import { ProfileStore } from '../platform/storage';
 import { GridRenderer } from './gridRenderer';
 import { isModalOpen, showModal } from './modal';
+import { renderShop } from './shop';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 /** Low-energy warning threshold, as a share of max energy. */
 const LOW_ENERGY = 0.2;
 
-/** Meta progress (in-memory for now; persisted in milestone 2). */
-interface Profile {
-  gems: number;
-  bestDepth: number;
-}
-
 export class App {
-  private profile: Profile = { gems: 0, bestDepth: 0 };
+  private store = new ProfileStore();
+  private profile: Profile = this.store.load();
   private run?: RunState;
   private renderer: GridRenderer;
   private rafId = 0;
@@ -29,6 +27,7 @@ export class App {
     this.renderer = new GridRenderer($<HTMLCanvasElement>('grid'), $('grid-wrap'));
     $('btn-start').addEventListener('click', () => this.startRun());
     $('btn-leave').addEventListener('click', () => this.confirmLeave());
+    $('btn-reset').addEventListener('click', () => this.confirmReset());
     $('grid').addEventListener('pointerdown', (e) => this.onGridPointer(e));
     this.showHub();
   }
@@ -39,14 +38,45 @@ export class App {
     cancelAnimationFrame(this.rafId);
     $('screen-run').hidden = true;
     $('screen-hub').hidden = false;
+    this.renderHub();
+  }
+
+  private renderHub(justBought?: UpgradeId) {
     $('hub-gems').textContent = String(this.profile.gems);
     $('hub-best').textContent = this.profile.bestDepth ? String(this.profile.bestDepth) : '–';
+    renderShop($('shop'), this.profile, (id) => this.buy(id), justBought);
+  }
+
+  private setProfile(profile: Profile) {
+    this.profile = profile;
+    this.store.save(profile);
+  }
+
+  private buy(id: UpgradeId) {
+    const next = buyUpgrade(this.profile, id);
+    if (next === this.profile) return;
+    this.setProfile(next);
+    this.renderHub(id);
+  }
+
+  private confirmReset() {
+    showModal(`<h2>Reset progress?</h2><p>This erases all gems, upgrades and your best depth. It can't be undone.</p>`, [
+      {
+        label: 'Reset everything',
+        className: 'danger',
+        onClick: () => {
+          this.profile = this.store.reset();
+          this.renderHub();
+        },
+      },
+      { label: 'Cancel', onClick: () => {} },
+    ]);
   }
 
   private startRun() {
     const seed = this.forcedSeed ?? randomSeed();
     this.forcedSeed = undefined;
-    this.run = createRun(seed, defaultModifiers());
+    this.run = createRun(seed, modifiersFromProfile(this.profile));
     console.info(`[deep-dig] run seed ${seed}`);
     $('screen-hub').hidden = true;
     $('screen-run').hidden = false;
@@ -123,9 +153,8 @@ export class App {
     if (!this.run) return;
     const { summary } = endRun(this.run, reason);
     this.run = undefined;
-    const newBest = summary.depth > this.profile.bestDepth;
-    this.profile.gems += summary.gemsKept;
-    if (newBest) this.profile.bestDepth = summary.depth;
+    const { profile, newBest } = applyRunResult(this.profile, summary);
+    this.setProfile(profile);
     this.showSummary(summary, newBest);
   }
 
