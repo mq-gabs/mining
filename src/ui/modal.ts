@@ -1,5 +1,8 @@
 export interface ModalAction {
-  label: string;
+  /** Plain-text label; ignored when `html` is given. */
+  label?: string;
+  /** Rich button content (trusted, app-generated HTML only). */
+  html?: string;
   primary?: boolean;
   /** Extra button class, e.g. 'danger'. */
   className?: string;
@@ -17,7 +20,8 @@ export function showModal(bodyHtml: string, actions: ModalAction[]) {
   for (const a of actions) {
     const btn = document.createElement('button');
     btn.className = ['btn', a.primary && 'primary', a.className].filter(Boolean).join(' ');
-    btn.textContent = a.label;
+    if (a.html) btn.innerHTML = a.html;
+    else btn.textContent = a.label ?? '';
     btn.addEventListener('click', () => {
       hideModal();
       a.onClick();

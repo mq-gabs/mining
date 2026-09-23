@@ -80,6 +80,14 @@ describe('generateFloor', () => {
     expect(minable.sort((a, b) => a - b)).toEqual([f.entrance - 1, f.entrance + 1, f.entrance + f.cols]);
   });
 
+  it('every tier in the mix is unlocked by the time its weight is non-zero', () => {
+    for (const band of CONFIG.gems.tierMix) {
+      for (const [tier, w] of Object.entries(band.weights)) {
+        if (w > 0) expect(CONFIG.gems.tiers[tier as keyof typeof CONFIG.gems.tiers].fromDepth).toBeLessThanOrEqual(band.fromDepth);
+      }
+    }
+  });
+
   it('gem tier weights unlock by depth', () => {
     expect(Object.keys(gemWeightsForDepth(1))).toEqual(['quartz']);
     expect(Object.keys(gemWeightsForDepth(15))).toHaveLength(5);

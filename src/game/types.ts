@@ -2,10 +2,30 @@ import type { BlockType, GemTier } from '../config';
 
 export type { BlockType, GemTier };
 
+export type PerkId =
+  | 'sharpEdge'
+  | 'secondWind'
+  | 'luckyStrike'
+  | 'tremor'
+  | 'gasMask'
+  | 'prospector'
+  | 'efficientSwing'
+  | 'treasureSense'
+  | 'deepBreath'
+  | 'greed';
+
+export type HazardKind = 'gas' | 'caveIn';
+
 export type Content =
   | { kind: 'none' }
   | { kind: 'gem'; tier: GemTier }
+  | { kind: 'crystal' }
+  | { kind: 'chest' }
+  | { kind: 'gas' }
+  | { kind: 'caveIn' }
   | { kind: 'stairs' };
+
+export type ContentKind = Content['kind'];
 
 export interface Cell {
   /** Open cells are walkable/visible; closed cells are blocks. */
@@ -13,7 +33,7 @@ export interface Cell {
   block: BlockType;
   hp: number;
   maxHp: number;
-  /** Hidden until the block breaks. Once collected, becomes `none`. */
+  /** Hidden until the block breaks. Once collected/triggered, becomes `none`. */
   content: Content;
 }
 
@@ -27,7 +47,7 @@ export interface Floor {
   entrance: number;
 }
 
-/** Stats that come from permanent upgrades (and later, perks). */
+/** Stats that come from permanent upgrades and in-run perks. */
 export interface RunModifiers {
   maxEnergy: number;
   power: number;
@@ -37,8 +57,9 @@ export interface RunModifiers {
   gemValueMult: number;
 }
 
-export type RunStatus = 'playing' | 'outOfEnergy' | 'ended';
+export type RunStatus = 'playing' | 'choosingPerk' | 'outOfEnergy' | 'ended';
 export type EndReason = 'left' | 'exhausted';
+export type PerkOfferSource = 'floor' | 'chest';
 
 export interface RunState {
   seed: number;
@@ -48,7 +69,11 @@ export interface RunState {
   mods: RunModifiers;
   /** Gems collected this run (before any end-of-run penalty). */
   gems: number;
-  /** In-run randomness (perk procs etc.), kept separate from floor generation. */
+  /** Stack count per perk taken this run. */
+  perks: Partial<Record<PerkId, number>>;
+  /** Present while status is 'choosingPerk'. */
+  perkOffer?: { source: PerkOfferSource; choices: PerkId[] };
+  /** In-run randomness (perk procs, cave-ins, perk offers), separate from floor generation. */
   rngState: number;
   status: RunStatus;
   stats: { taps: number; blocksBroken: number };
@@ -56,10 +81,17 @@ export interface RunState {
 
 export type RunEvent =
   | { type: 'hit'; idx: number; damage: number }
+  | { type: 'freeSwing'; idx: number }
   | { type: 'break'; idx: number; block: BlockType }
-  | { type: 'gem'; idx: number; tier: GemTier; value: number }
+  | { type: 'gem'; idx: number; tier: GemTier; value: number; doubled: boolean }
+  | { type: 'crystal'; idx: number; energy: number }
+  | { type: 'chest'; idx: number; gems: number }
+  | { type: 'gas'; idx: number; energyLost: number; masked: boolean }
+  | { type: 'caveIn'; idx: number; filled: number[] }
   | { type: 'stairsRevealed'; idx: number }
-  | { type: 'descend'; depth: number }
+  | { type: 'descend'; depth: number; energyRestored: number }
+  | { type: 'perkOffer'; source: PerkOfferSource; choices: PerkId[] }
+  | { type: 'perkChosen'; perk: PerkId }
   | { type: 'outOfEnergy' };
 
 export interface RunSummary {

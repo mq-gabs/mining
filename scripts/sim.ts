@@ -3,7 +3,8 @@
 // Usage: npm run sim [-- players runs]
 import { CONFIG, UPGRADE_IDS } from '../src/config';
 import { tapsToBreak } from '../src/game/economy';
-import { isMinable, toColRow } from '../src/game/grid';
+import { toColRow } from '../src/game/grid';
+import { computeHints } from '../src/game/hints';
 import {
   applyRunResult,
   buyUpgrade,
@@ -13,8 +14,14 @@ import {
   upgradeCost,
   type Profile,
 } from '../src/game/progression';
-import { createRun, endRun, tapCell } from '../src/game/run';
-import type { RunState, RunSummary } from '../src/game/types';
+import { choosePerk, createRun, endRun, tapCell } from '../src/game/run';
+import type { PerkId, RunState, RunSummary } from '../src/game/types';
+
+/** Bot's perk preference, best first. */
+const PERK_PRIORITY: PerkId[] = [
+  'secondWind', 'deepBreath', 'sharpEdge', 'efficientSwing', 'tremor', 'gasMask',
+  'luckyStrike', 'treasureSense', 'prospector', 'greed',
+];
 
 declare const process: { argv: string[] };
 
@@ -27,11 +34,15 @@ function pickTarget(run: RunState, rand: Rand): number | undefined {
   const searchRow = f.rows - CONFIG.grid.stairsBottomRows;
   let best: number | undefined;
   let bestScore = Infinity;
+  const hints = computeHints(f);
   f.cells.forEach((c, i) => {
-    if (!isMinable(f, i)) return;
+    const hint = hints[i];
+    if (!hint) return;
     const { row } = toColRow(f, i);
     const depthPenalty = row < searchRow ? (searchRow - row) * 0.8 : 0;
-    const score = tapsToBreak(c.hp, run.mods.power) + depthPenalty + rand() * 0.5;
+    // Mild hint use: sparkles are worth a detour, dust is worth avoiding.
+    const hintScore = (hint.gemNear ? -0.7 : 0) + (hint.hazardNear ? 0.7 : 0);
+    const score = tapsToBreak(c.hp, run.mods.power) + depthPenalty + hintScore + rand() * 0.5;
     if (score < bestScore) {
       bestScore = score;
       best = i;
@@ -45,11 +56,25 @@ function playRun(seed: number, profile: Profile, rand: Rand): RunSummary {
   let run = createRun(seed, modifiersFromProfile(profile));
   let energyAtFloorStart = run.energy;
   const floorCosts: number[] = [];
-  while (run.status === 'playing') {
+  let steps = 0;
+  while (run.status === 'playing' || run.status === 'choosingPerk') {
+    if (++steps > 5000) {
+      throw new Error(`run did not end: seed ${seed} depth ${run.depth} energy ${run.energy} status ${run.status} perks ${JSON.stringify(run.perks)} mods ${JSON.stringify(run.mods)} upgrades ${JSON.stringify(profile.upgrades)}`);
+    }
+    if (run.status === 'choosingPerk') {
+      const choices = run.perkOffer!.choices;
+      const pick = PERK_PRIORITY.find((p) => choices.includes(p)) ?? choices[0];
+      run = choosePerk(run, pick).run;
+      continue;
+    }
     const t = pickTarget(run, rand);
     if (t === undefined) break;
     const depth = run.depth;
-    run = tapCell(run, t).run;
+    const next = tapCell(run, t).run;
+    if (next === run) {
+      throw new Error(`bot stuck: seed ${seed} depth ${run.depth} cell ${t} ${JSON.stringify(run.floor.cells[t])}`);
+    }
+    run = next;
     if (run.depth > depth) {
       floorCosts.push(energyAtFloorStart - run.energy);
       energyAtFloorStart = run.energy;

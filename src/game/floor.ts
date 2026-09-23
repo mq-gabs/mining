@@ -17,13 +17,25 @@ export function blockWeightsForDepth(depth: number): Record<BlockType, number> {
 }
 
 export function gemWeightsForDepth(depth: number): Partial<Record<GemTier, number>> {
+  let mix: Record<GemTier, number> = CONFIG.gems.tierMix[0].weights;
+  for (const band of CONFIG.gems.tierMix) {
+    if (depth >= band.fromDepth) mix = band.weights;
+  }
   const weights: Partial<Record<GemTier, number>> = {};
   for (const tier of GEM_TIERS) {
-    const t = CONFIG.gems.tiers[tier];
-    if (depth < t.fromDepth) continue;
-    weights[tier] = t.weight * Math.pow(1 - CONFIG.gems.tierWeightDecayPerDepth, depth - t.fromDepth);
+    if (depth >= CONFIG.gems.tiers[tier].fromDepth && mix[tier] > 0) weights[tier] = mix[tier];
   }
   return weights;
+}
+
+type ExtraContent = keyof typeof CONFIG.contents;
+const EXTRA_CONTENTS = Object.keys(CONFIG.contents) as ExtraContent[];
+
+/** Chance for a block on this floor to hold a crystal, chest or hazard. */
+export function contentChanceForDepth(kind: ExtraContent, depth: number): number {
+  const c = CONFIG.contents[kind];
+  if (depth < c.fromDepth) return 0;
+  return Math.max(c.min, Math.min(c.max, c.base + c.perDepth * (depth - 1)));
 }
 
 /** Chance for a block on this floor to hold a gem, before stairs/other contents. */
@@ -59,9 +71,10 @@ export function generateFloor(runSeed: number, depth: number, opts: FloorOptions
   const stairs = toIndex({ cols }, rng.int(cols), stairsRow);
   cells[stairs].content = { kind: 'stairs' };
 
+  const extraChances = EXTRA_CONTENTS.map((kind) => [kind, contentChanceForDepth(kind, depth)] as const);
   for (let i = 0; i < cells.length; i++) {
     if (i === entrance || i === stairs) continue;
-    cells[i].content = rollContent(rng, gemChance, gemWeights);
+    cells[i].content = rollContent(rng, gemChance, gemWeights, extraChances);
   }
 
   return { depth, seed, cols, rows, cells, entrance };
@@ -71,10 +84,17 @@ function rollContent(
   rng: Rng,
   gemChance: number,
   gemWeights: Partial<Record<GemTier, number>>,
+  extraChances: readonly (readonly [ExtraContent, number])[],
 ): Content {
-  if (rng.chance(gemChance)) {
+  let roll = rng.next();
+  if (roll < gemChance) {
     const tier = rng.weighted(gemWeights);
     if (tier) return { kind: 'gem', tier };
+  }
+  roll -= gemChance;
+  for (const [kind, chance] of extraChances) {
+    if (roll < chance) return { kind };
+    roll -= chance;
   }
   return { kind: 'none' };
 }

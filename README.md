@@ -18,6 +18,8 @@ Other scripts:
 | `npm run preview` | Serve the production build |
 | `npm run sim [-- players runs]` | Balance simulator: bots play whole careers (run → shop → run) and report depth, gems and upgrades per run |
 
+In dev builds, `window.__deepDig` exposes the run state (`__deepDig.run`, settable), `__deepDig.tap(idx)` and `__deepDig.hints()` for debugging from the console.
+
 Add `?seed=12345` to the URL to replay a specific run. Each run logs its seed to the console and shows it on the summary screen.
 
 ## Layout

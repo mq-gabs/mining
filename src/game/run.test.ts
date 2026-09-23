@@ -4,14 +4,14 @@ import { energyAfterTap, gemsKept, gemValue, tapsToBreak } from './economy';
 import { addEnergy, createRun, defaultModifiers, endRun, tapCell } from './run';
 import type { RunState } from './types';
 
-/** A run whose floor is all dirt except the cells we set, for predictable tests. */
+/** A run whose floor is all empty dirt (plus stairs) except the cells we set, for predictable tests. */
 function testRun(overrides: Partial<RunState['mods']> = {}): RunState {
   const run = createRun(123, { ...defaultModifiers(), ...overrides });
   for (const c of run.floor.cells) {
     if (c.open) continue;
     c.block = 'dirt';
     c.hp = c.maxHp = 1;
-    if (c.content.kind === 'gem') c.content = { kind: 'none' };
+    if (c.content.kind !== 'stairs') c.content = { kind: 'none' };
   }
   return run;
 }
@@ -79,7 +79,7 @@ describe('tapCell', () => {
     const { run: after, events } = tapCell(run, idx);
     expect(after.gems).toBe(10);
     expect(after.floor.cells[idx].content.kind).toBe('none');
-    expect(events).toContainEqual({ type: 'gem', idx, tier: 'amethyst', value: 10 });
+    expect(events).toContainEqual({ type: 'gem', idx, tier: 'amethyst', value: 10, doubled: false });
   });
 
   it('reveals stairs, and tapping them descends to a new floor for free', () => {

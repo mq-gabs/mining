@@ -25,3 +25,18 @@ export function isMinable(floor: Floor, idx: number): boolean {
   if (!cell || cell.open) return false;
   return neighbors4(floor, idx).some((n) => floor.cells[n].open);
 }
+
+/** All 8 surrounding cells (orthogonal + diagonal) that are inside the grid. */
+export function neighbors8(floor: Pick<Floor, 'cols' | 'rows'>, idx: number): number[] {
+  const { col, row } = toColRow(floor, idx);
+  const out: number[] = [];
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      if (dr === 0 && dc === 0) continue;
+      const c = col + dc;
+      const r = row + dr;
+      if (c >= 0 && r >= 0 && c < floor.cols && r < floor.rows) out.push(r * floor.cols + c);
+    }
+  }
+  return out;
+}

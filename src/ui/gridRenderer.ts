@@ -1,7 +1,27 @@
-import { isMinable, toColRow } from '../game/grid';
+import type { CellHint } from '../game/hints';
+import { toColRow } from '../game/grid';
 import { Rng } from '../game/rng';
 import type { Cell, Floor, RunEvent } from '../game/types';
-import { BACKDROP_COLOR, BLOCK_COLORS, GEM_COLORS, TUNNEL_COLOR } from './theme';
+import {
+  BACKDROP_COLOR,
+  BLOCK_COLORS,
+  CRYSTAL_COLOR,
+  DUST_COLOR,
+  GAS_COLOR,
+  GEM_COLORS,
+  SPARKLE_COLOR,
+  TREASURE_COLOR,
+  TUNNEL_COLOR,
+} from './theme';
+
+/** What the renderer needs beyond the floor itself. */
+export interface DrawView {
+  hints: (CellHint | undefined)[];
+  /** Prospector: sparkles take the neighbouring gem's tier color. */
+  tierColors: boolean;
+  /** Treasure Sense: exposed chests glow. */
+  showChests: boolean;
+}
 
 interface FloatText {
   x: number;
@@ -10,9 +30,20 @@ interface FloatText {
   color: string;
   start: number;
   duration: number;
+  size: number;
+}
+
+interface Puff {
+  x: number;
+  y: number;
+  color: string;
+  start: number;
+  duration: number;
+  radius: number;
 }
 
 const HIT_SHAKE_MS = 120;
+const SCREEN_SHAKE_MS = 280;
 const GAP = 3;
 
 /** Draws a floor onto a canvas and maps pointer positions back to cells. */
@@ -25,6 +56,8 @@ export class GridRenderer {
   private originY = 0;
   private hitTimes = new Map<number, number>();
   private floats: FloatText[] = [];
+  private puffs: Puff[] = [];
+  private screenShakeAt = -Infinity;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -70,24 +103,71 @@ export class GridRenderer {
     };
   }
 
+  private float(floor: Floor, idx: number, text: string, color: string, now: number, size = 20) {
+    const { x, y } = this.cellCenter(floor, idx);
+    // Stagger texts that land on the same cell in the same action.
+    const stacked = this.floats.filter((f) => f.start === now && Math.abs(f.x - x) < 1 && Math.abs(f.y - y) < 1).length;
+    this.floats.push({ x, y: y + stacked * 20, text, color, start: now, duration: 750, size });
+  }
+
   handleEvents(floor: Floor, events: RunEvent[], now: number) {
     for (const e of events) {
-      if (e.type === 'hit') this.hitTimes.set(e.idx, now);
-      if (e.type === 'gem') {
-        const { x, y } = this.cellCenter(floor, e.idx);
-        this.floats.push({ x, y, text: `+${e.value}`, color: GEM_COLORS[e.tier], start: now, duration: 700 });
-      }
-      if (e.type === 'descend') {
-        this.hitTimes.clear();
-        this.floats = [];
+      switch (e.type) {
+        case 'hit':
+          this.hitTimes.set(e.idx, now);
+          break;
+        case 'freeSwing':
+          this.float(floor, e.idx, 'free!', CRYSTAL_COLOR, now, 14);
+          break;
+        case 'gem':
+          this.float(floor, e.idx, `+${e.value}${e.doubled ? ' ×2' : ''}`, GEM_COLORS[e.tier], now);
+          break;
+        case 'crystal':
+          this.float(floor, e.idx, `+${e.energy}⚡`, CRYSTAL_COLOR, now);
+          this.puff(floor, e.idx, 'rgba(95,211,255,0.55)', now);
+          break;
+        case 'chest':
+          this.float(floor, e.idx, `+${e.gems}`, TREASURE_COLOR, now, 22);
+          break;
+        case 'perkOffer':
+          if (e.source === 'chest') {
+            const idx = events.find((x) => x.type === 'break')?.idx;
+            if (idx !== undefined) this.float(floor, idx, 'Perk!', TREASURE_COLOR, now, 22);
+          }
+          break;
+        case 'gas':
+          this.puff(floor, e.idx, e.masked ? 'rgba(140,200,120,0.3)' : 'rgba(120,220,90,0.6)', now, 1.6);
+          this.float(floor, e.idx, e.masked ? 'masked' : `−${e.energyLost}⚡`, GAS_COLOR, now);
+          break;
+        case 'caveIn':
+          this.screenShakeAt = now;
+          this.float(floor, e.idx, 'Cave-in!', '#e8c9a0', now, 16);
+          break;
+        case 'descend':
+          this.hitTimes.clear();
+          this.floats = [];
+          this.puffs = [];
+          break;
       }
     }
   }
 
-  draw(floor: Floor, now: number) {
+  private puff(floor: Floor, idx: number, color: string, now: number, scale = 1) {
+    const { x, y } = this.cellCenter(floor, idx);
+    this.puffs.push({ x, y, color, start: now, duration: 280, radius: this.cellSize * 0.8 * scale });
+  }
+
+  draw(floor: Floor, view: DrawView, now: number) {
     const ctx = this.ctx;
     this.layout(floor);
     ctx.clearRect(0, 0, this.width, this.height);
+
+    ctx.save();
+    const shakeT = (now - this.screenShakeAt) / SCREEN_SHAKE_MS;
+    if (shakeT < 1) {
+      const m = 6 * (1 - shakeT);
+      ctx.translate(Math.sin(now * 0.09) * m, Math.cos(now * 0.11) * m);
+    }
 
     const s = this.cellSize;
     ctx.fillStyle = BACKDROP_COLOR;
@@ -105,10 +185,12 @@ export class GridRenderer {
         else this.hitTimes.delete(idx);
       }
       if (cell.open) this.drawOpen(floor, cell, idx, x, y, s, now);
-      else this.drawBlock(floor, cell, idx, x, y, s);
+      else this.drawBlock(floor, cell, idx, x, y, s, view, now);
     });
 
+    this.drawPuffs(now);
     this.drawFloats(now);
+    ctx.restore();
   }
 
   private drawOpen(floor: Floor, cell: Cell, idx: number, x: number, y: number, s: number, now: number) {
@@ -147,7 +229,16 @@ export class GridRenderer {
     }
   }
 
-  private drawBlock(floor: Floor, cell: Cell, idx: number, x: number, y: number, s: number) {
+  private drawBlock(
+    floor: Floor,
+    cell: Cell,
+    idx: number,
+    x: number,
+    y: number,
+    s: number,
+    view: DrawView,
+    now: number,
+  ) {
     const ctx = this.ctx;
     const colors = BLOCK_COLORS[cell.block];
     const bx = x + GAP / 2;
@@ -186,11 +277,18 @@ export class GridRenderer {
 
     this.drawCracks(cell, idx, floor.seed, bx, by, bs);
 
-    if (isMinable(floor, idx)) {
+    const hint = view.hints[idx];
+    if (hint) {
       ctx.strokeStyle = 'rgba(255,230,190,0.45)';
       ctx.lineWidth = 1.5;
       roundRect(ctx, bx + 0.75, by + 0.75, bs - 1.5, bs - 1.5, 6);
       ctx.stroke();
+      if (hint.chest && view.showChests) this.drawTreasureGlow(bx, by, bs, now);
+      if (hint.hazardNear) this.drawDust(floor.seed, idx, bx, by, bs, now);
+      if (hint.gemNear) {
+        const color = view.tierColors ? GEM_COLORS[hint.gemNear] : SPARKLE_COLOR;
+        this.drawSparkles(floor.seed, idx, bx, by, bs, color, now);
+      }
     } else {
       ctx.fillStyle = 'rgba(0,0,0,0.42)';
       roundRect(ctx, bx, by, bs, bs, 6);
@@ -228,13 +326,85 @@ export class GridRenderer {
     }
   }
 
+  /** A few twinkling 4-point stars at fixed spots on the block. */
+  private drawSparkles(seed: number, idx: number, bx: number, by: number, bs: number, color: string, now: number) {
+    const ctx = this.ctx;
+    const rng = new Rng(seed ^ (idx * 7349) ^ 0x5a5a);
+    ctx.fillStyle = color;
+    for (let i = 0; i < 3; i++) {
+      const px = bx + bs * (0.2 + rng.next() * 0.6);
+      const py = by + bs * (0.2 + rng.next() * 0.6);
+      const phase = rng.next() * Math.PI * 2;
+      const tw = 0.5 + 0.5 * Math.sin(now / 260 + phase);
+      const r = bs * (0.05 + 0.06 * tw);
+      ctx.globalAlpha = 0.35 + 0.6 * tw;
+      ctx.beginPath();
+      ctx.moveTo(px, py - r);
+      ctx.quadraticCurveTo(px, py, px + r, py);
+      ctx.quadraticCurveTo(px, py, px, py + r);
+      ctx.quadraticCurveTo(px, py, px - r, py);
+      ctx.quadraticCurveTo(px, py, px, py - r);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** Faint particles drifting down across the block. */
+  private drawDust(seed: number, idx: number, bx: number, by: number, bs: number, now: number) {
+    const ctx = this.ctx;
+    const rng = new Rng(seed ^ (idx * 9151) ^ 0xd057);
+    ctx.fillStyle = DUST_COLOR;
+    for (let i = 0; i < 5; i++) {
+      const px = bx + bs * (0.15 + rng.next() * 0.7);
+      const speed = 0.25 + rng.next() * 0.3;
+      const t = (now / 1000) * speed + rng.next();
+      const f = t - Math.floor(t);
+      ctx.globalAlpha = 0.85 * Math.sin(f * Math.PI);
+      ctx.beginPath();
+      ctx.arc(px + Math.sin(t * 5) * 2, by + bs * (0.1 + f * 0.8), 1.3 + rng.next(), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  private drawTreasureGlow(bx: number, by: number, bs: number, now: number) {
+    const ctx = this.ctx;
+    const pulse = 0.5 + 0.5 * Math.sin(now / 220);
+    ctx.save();
+    ctx.shadowColor = TREASURE_COLOR;
+    ctx.shadowBlur = 8 + pulse * 8;
+    ctx.strokeStyle = TREASURE_COLOR;
+    ctx.globalAlpha = 0.6 + pulse * 0.4;
+    ctx.lineWidth = 2.5;
+    roundRect(ctx, bx + 2, by + 2, bs - 4, bs - 4, 6);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private drawPuffs(now: number) {
+    const ctx = this.ctx;
+    this.puffs = this.puffs.filter((p) => now - p.start < p.duration);
+    for (const p of this.puffs) {
+      const t = (now - p.start) / p.duration;
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius * (0.4 + t * 0.6));
+      g.addColorStop(0, p.color);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = 1 - t;
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   private drawFloats(now: number) {
     const ctx = this.ctx;
     this.floats = this.floats.filter((f) => now - f.start < f.duration);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '800 20px system-ui, sans-serif';
     for (const f of this.floats) {
+      ctx.font = `800 ${f.size}px system-ui, sans-serif`;
       const t = (now - f.start) / f.duration;
       ctx.globalAlpha = 1 - t * t;
       ctx.lineWidth = 4;

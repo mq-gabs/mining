@@ -17,3 +17,9 @@ export const GEM_COLORS: Record<GemTier, string> = {
 
 export const TUNNEL_COLOR = '#1a1310';
 export const BACKDROP_COLOR = '#0d0907';
+
+export const SPARKLE_COLOR = '#fff4c8';
+export const DUST_COLOR = '#efe3d3';
+export const TREASURE_COLOR = '#ffc94a';
+export const CRYSTAL_COLOR = '#7fe3ff';
+export const GAS_COLOR = '#9be86b';

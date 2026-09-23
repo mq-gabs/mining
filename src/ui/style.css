@@ -356,6 +356,88 @@ body {
   flex: 1;
 }
 
+/* ---------- Perks ---------- */
+.perk-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 4px;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow-x: auto;
+  touch-action: manipulation;
+}
+.perk-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  height: 30px;
+  padding: 0 7px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 16px;
+}
+.perk-chip small {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.perk-empty {
+  font-size: 12px;
+  color: #6d6158;
+}
+.btn.perk-card,
+.perk-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  text-align: left;
+  font-weight: 400;
+}
+.btn.perk-card {
+  min-height: 64px;
+  border-color: #4a3a2e;
+}
+.btn.perk-card:hover {
+  border-color: var(--accent);
+}
+.perk-row {
+  background: var(--panel-2);
+  border-radius: 12px;
+}
+.perk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.perk-icon {
+  flex: none;
+  font-size: 28px;
+}
+.perk-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.perk-text span {
+  font-size: 14px;
+  color: var(--muted);
+}
+.perk-stack {
+  font-size: 12px !important;
+  font-weight: 600;
+}
+
 /* ---------- Modal ---------- */
 .modal {
   position: absolute;

@@ -111,6 +111,7 @@ describe('depth scaling', () => {
       const w = gemWeightsForDepth(d);
       return w.amethyst! / Object.values(w).reduce((a, b) => a + b!, 0)!;
     };
-    expect(share(5)).toBeGreaterThan(share(3));
+    expect(share(8)).toBeGreaterThan(share(3));
+    expect(share(3)).toBeGreaterThan(0);
   });
 });

@@ -1,11 +1,13 @@
 import { CONFIG, type UpgradeId } from '../config';
 import { gemsKept } from '../game/economy';
+import { computeHints } from '../game/hints';
+import { hasPerk, PERKS } from '../game/perks';
 import { applyRunResult, buyUpgrade, modifiersFromProfile, type Profile } from '../game/progression';
-import { createRun, endRun, tapCell } from '../game/run';
+import { choosePerk, createRun, endRun, tapCell, type ActionResult } from '../game/run';
 import { randomSeed } from '../game/rng';
-import type { EndReason, RunEvent, RunState, RunSummary } from '../game/types';
+import type { EndReason, PerkId, RunEvent, RunState, RunSummary } from '../game/types';
 import { ProfileStore } from '../platform/storage';
-import { GridRenderer } from './gridRenderer';
+import { GridRenderer, type DrawView } from './gridRenderer';
 import { isModalOpen, showModal } from './modal';
 import { renderShop } from './shop';
 
@@ -18,6 +20,7 @@ export class App {
   private store = new ProfileStore();
   private profile: Profile = this.store.load();
   private run?: RunState;
+  private view: DrawView = { hints: [], tierColors: false, showChests: false };
   private renderer: GridRenderer;
   private rafId = 0;
   /** A `?seed=123` URL param forces the first run's seed (for reproducing bugs). */
@@ -29,7 +32,26 @@ export class App {
     $('btn-leave').addEventListener('click', () => this.confirmLeave());
     $('btn-reset').addEventListener('click', () => this.confirmReset());
     $('grid').addEventListener('pointerdown', (e) => this.onGridPointer(e));
+    $('perk-bar').addEventListener('click', () => this.showActivePerks());
     this.showHub();
+    if (import.meta.env.DEV) this.exposeDebugHook();
+  }
+
+  /** Dev builds only: `window.__deepDig` to inspect state and script taps from the console or tests. */
+  private exposeDebugHook() {
+    const app = this;
+    Object.assign(window, {
+      __deepDig: {
+        get run() {
+          return app.run;
+        },
+        set run(run: RunState | undefined) {
+          if (run) app.setRun(run);
+        },
+        tap: (idx: number) => app.run && app.apply(tapCell(app.run, idx)),
+        hints: () => app.view.hints,
+      },
+    });
   }
 
   // ---------- Screens ----------
@@ -76,18 +98,35 @@ export class App {
   private startRun() {
     const seed = this.forcedSeed ?? randomSeed();
     this.forcedSeed = undefined;
-    this.run = createRun(seed, modifiersFromProfile(this.profile));
     console.info(`[deep-dig] run seed ${seed}`);
     $('screen-hub').hidden = true;
     $('screen-run').hidden = false;
-    this.updateHud();
+    this.setRun(createRun(seed, modifiersFromProfile(this.profile)));
     this.loop();
   }
 
   private loop = () => {
-    if (this.run) this.renderer.draw(this.run.floor, performance.now());
+    if (this.run) this.renderer.draw(this.run.floor, this.view, performance.now());
     this.rafId = requestAnimationFrame(this.loop);
   };
+
+  private setRun(run: RunState) {
+    this.run = run;
+    this.view = {
+      hints: computeHints(run.floor),
+      tierColors: hasPerk(run, 'prospector'),
+      showChests: hasPerk(run, 'treasureSense'),
+    };
+    this.updateHud();
+  }
+
+  /** Applies the result of a game action: new state, effects, and follow-up UI. */
+  private apply({ run, events }: ActionResult) {
+    if (run === this.run) return;
+    this.setRun(run);
+    this.renderer.handleEvents(run.floor, events, performance.now());
+    this.onEvents(events);
+  }
 
   // ---------- Input ----------
 
@@ -96,21 +135,60 @@ export class App {
     if (!this.run || this.run.status !== 'playing' || isModalOpen()) return;
     const idx = this.renderer.cellAt(this.run.floor, e.clientX, e.clientY);
     if (idx === undefined) return;
-    const { run, events } = tapCell(this.run, idx);
-    if (run === this.run) return;
-    this.run = run;
-    this.renderer.handleEvents(run.floor, events, performance.now());
-    this.updateHud();
-    this.onEvents(events);
+    this.apply(tapCell(this.run, idx));
   }
 
   private onEvents(events: RunEvent[]) {
     for (const e of events) {
-      if (e.type === 'outOfEnergy') {
-        // Let the last hit animation play before interrupting.
-        setTimeout(() => this.showOutOfEnergy(), 350);
-      }
+      // Short delays let the triggering animation play before a modal interrupts.
+      if (e.type === 'outOfEnergy') setTimeout(() => this.showOutOfEnergy(), 350);
+      if (e.type === 'perkOffer') setTimeout(() => this.showPerkPicker(), 250);
     }
+  }
+
+  // ---------- Perks ----------
+
+  private showPerkPicker() {
+    const run = this.run;
+    if (!run || run.status !== 'choosingPerk' || !run.perkOffer) return;
+    const { source, choices } = run.perkOffer;
+    const subtitle = source === 'chest' ? 'You found a relic in the chest.' : `You reached floor ${run.depth}.`;
+    showModal(
+      `<h2>Choose a perk</h2><p>${subtitle} Perks last until the end of this run.</p>`,
+      choices.map((id) => ({
+        html: perkCardHtml(id, run.perks[id] ? `(have ${run.perks[id]})` : ''),
+        className: 'perk-card',
+        onClick: () => this.apply(choosePerk(run, id)),
+      })),
+    );
+  }
+
+  private showActivePerks() {
+    const run = this.run;
+    if (!run || run.status !== 'playing' || isModalOpen()) return;
+    const owned = (Object.keys(run.perks) as PerkId[]).filter((id) => hasPerk(run, id));
+    const list = owned.length
+      ? owned
+          .map((id) => `<div class="perk-row">${perkCardHtml(id, run.perks[id]! > 1 ? `×${run.perks[id]}` : '')}</div>`)
+          .join('')
+      : `<p>No perks yet. You get to pick one every ${CONFIG.perks.offerEveryFloors} floors, and some chests hold one.</p>`;
+    showModal(`<h2>Active perks</h2><div class="perk-list">${list}</div>`, [
+      { label: 'Back to digging', primary: true, onClick: () => {} },
+    ]);
+  }
+
+  private renderPerkBar(run: RunState) {
+    const owned = (Object.keys(run.perks) as PerkId[]).filter((id) => hasPerk(run, id));
+    const bar = $('perk-bar');
+    bar.classList.toggle('empty', owned.length === 0);
+    bar.innerHTML = owned.length
+      ? owned
+          .map((id) => {
+            const n = run.perks[id]!;
+            return `<span class="perk-chip" title="${PERKS[id].name}">${PERKS[id].icon}${n > 1 ? `<small>×${n}</small>` : ''}</span>`;
+          })
+          .join('')
+      : '<span class="perk-empty">Perks: none yet</span>';
   }
 
   // ---------- HUD ----------
@@ -124,6 +202,7 @@ export class App {
     $('energy-fill').style.width = `${Math.max(0, Math.min(1, ratio)) * 100}%`;
     $('energy-text').textContent = `⚡ ${run.energy} / ${run.mods.maxEnergy}`;
     $('energy').classList.toggle('low', ratio < LOW_ENERGY);
+    this.renderPerkBar(run);
   }
 
   // ---------- Run endings ----------
@@ -173,6 +252,14 @@ export class App {
       [{ label: 'Continue', primary: true, onClick: () => this.showHub() }],
     );
   }
+}
+
+/** A perk's icon, name and description, with an optional stack note after the name. */
+function perkCardHtml(id: PerkId, stackNote: string): string {
+  const p = PERKS[id];
+  const stack = stackNote ? ` <span class="perk-stack">${stackNote}</span>` : '';
+  return `<span class="perk-icon">${p.icon}</span>
+    <span class="perk-text"><strong>${p.name}${stack}</strong><span>${p.description}</span></span>`;
 }
 
 function parseSeedParam(): number | undefined {
