@@ -79,6 +79,8 @@ export interface RunState {
   perks: Partial<Record<PerkId, number>>;
   /** Present while status is 'choosingPerk'. */
   perkOffer?: { source: PerkOfferSource; choices: PerkId[] };
+  /** The out-of-energy rewarded ad was already used this run (it's once per run). */
+  energyAdUsed: boolean;
   /** In-run randomness (perk procs, cave-ins, perk offers), separate from floor generation. */
   rngState: number;
   status: RunStatus;
@@ -103,6 +105,8 @@ export type RunEvent =
 
 export interface RunSummary {
   seed: number;
+  /** The gems kept were multiplied by the summary's rewarded ad. */
+  gemsDoubled?: boolean;
   reason: EndReason;
   depth: number;
   gemsFound: number;

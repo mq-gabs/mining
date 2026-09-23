@@ -127,6 +127,16 @@ export const CONFIG = {
     exhaustedKeepRatio: 0.5,
   },
 
+  /** Ad rewards and pacing (only when the `ads` feature flag is on; see `src/flags.ts`). */
+  ads: {
+    /** Rewarded ad when out of energy, once per run. */
+    rewardedEnergy: 20,
+    /** Rewarded ad on the run summary multiplies the gems kept, once per run. */
+    gemMultiplier: 2,
+    /** An interstitial may show on the way back to the hub after every Nth completed run. */
+    interstitialEveryRuns: 3,
+  },
+
   perks: {
     /** A perk choice is offered on arriving at every Nth floor (3, 6, 9...). */
     offerEveryFloors: 3,

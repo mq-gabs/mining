@@ -110,6 +110,25 @@ export function modifiersFromProfile(profile: Profile): RunModifiers {
   };
 }
 
+/**
+ * Reward for the summary's rewarded ad: multiplies the gems kept from a run that was already applied
+ * with `applyRunResult`, so it adds the difference. Same objects back if already doubled or nothing kept.
+ */
+export function doubleRunGems(profile: Profile, summary: RunSummary): { profile: Profile; summary: RunSummary } {
+  if (summary.gemsDoubled || summary.gemsKept <= 0) return { profile, summary };
+  const kept = summary.gemsKept * CONFIG.ads.gemMultiplier;
+  return {
+    profile: { ...profile, gems: profile.gems + kept - summary.gemsKept },
+    summary: { ...summary, gemsKept: kept, gemsDoubled: true },
+  };
+}
+
+/** Interstitials show at most once every N runs: after runs N, 2N, 3N... (never during a run). */
+export function shouldShowInterstitial(runsCompleted: number): boolean {
+  const every = CONFIG.ads.interstitialEveryRuns;
+  return runsCompleted > 0 && runsCompleted % every === 0;
+}
+
 export function applyRunResult(profile: Profile, summary: RunSummary): { profile: Profile; newBest: boolean } {
   const newBest = summary.depth > profile.bestDepth;
   return {

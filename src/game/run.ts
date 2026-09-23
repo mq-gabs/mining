@@ -42,6 +42,7 @@ export function createRun(seed: number, mods: RunModifiers = defaultModifiers())
     tools: { ...mods.toolCharges },
     gems: 0,
     perks: {},
+    energyAdUsed: false,
     rngState: hashSeed(seed, 0x5eed),
     status: 'playing',
     stats: { taps: 0, blocksBroken: 0 },
@@ -265,6 +266,17 @@ export function choosePerk(prev: RunState, perk: PerkId): ActionResult {
   run.status = 'playing';
   ctx.events.push({ type: 'perkChosen', perk });
   return finish(ctx);
+}
+
+/** Whether a run that ran dry can still be saved by the rewarded energy ad. */
+export function canUseEnergyAd(run: RunState): boolean {
+  return run.status === 'outOfEnergy' && !run.energyAdUsed;
+}
+
+/** Reward for the out-of-energy ad: energy and a resumed run. Same state if not allowed. */
+export function grantAdEnergy(prev: RunState): RunState {
+  if (!canUseEnergyAd(prev)) return prev;
+  return { ...addEnergy(prev, CONFIG.ads.rewardedEnergy), energyAdUsed: true };
 }
 
 /** Grants energy (e.g. rewarded ad) and resumes a run that ran dry. */

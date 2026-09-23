@@ -136,6 +136,12 @@ export class Sounds {
     else arpeggio(this.synth, [392, 330, 262], 0.14, 'triangle', 0.16, 0.35);
   }
 
+  /** An ad's reward was granted. */
+  reward() {
+    arpeggio(this.synth, [784, 988, 1175, 1568], 0.06, 'triangle', 0.16, 0.25);
+    this.synth.noise({ dur: 0.25, filter: 'highpass', freq: 5000, vol: 0.08, delay: 0.1 });
+  }
+
   newBest() {
     arpeggio(this.synth, [523, 659, 784, 1047, 1319], 0.08, 'square', 0.07, 0.3);
   }

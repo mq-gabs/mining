@@ -2,14 +2,31 @@ import { CONFIG, GEM_TIERS, TOOL_IDS, type ToolId, type UpgradeId } from '../con
 import { gemsKept } from '../game/economy';
 import { computeHints } from '../game/hints';
 import { hasPerk, PERKS } from '../game/perks';
-import { applyRunResult, buyUpgrade, modifiersFromProfile, type Profile } from '../game/progression';
-import { choosePerk, createRun, endRun, tapCell, useTool, type ActionResult } from '../game/run';
+import {
+  applyRunResult,
+  buyUpgrade,
+  doubleRunGems,
+  modifiersFromProfile,
+  shouldShowInterstitial,
+  type Profile,
+} from '../game/progression';
+import {
+  canUseEnergyAd,
+  choosePerk,
+  createRun,
+  endRun,
+  grantAdEnergy,
+  tapCell,
+  useTool,
+  type ActionResult,
+} from '../game/run';
 import { randomSeed } from '../game/rng';
 import type { EndReason, PerkId, RunEvent, RunState, RunSummary } from '../game/types';
+import { createAdService, type AdService } from '../platform/ads';
 import { ProfileStore, SettingsStore } from '../platform/storage';
 import { flyGem, replayClass, showBanner } from './fx';
 import { GridRenderer, type DrawView } from './gridRenderer';
-import { isModalOpen, showModal } from './modal';
+import { isModalOpen, showModal, type ModalAction } from './modal';
 import { renderShop } from './shop';
 import { Sounds } from './sounds';
 import { GEM_COLORS, TREASURE_COLOR } from './theme';
@@ -24,6 +41,8 @@ export class App {
   private store = new ProfileStore();
   private settings = new SettingsStore();
   private sounds = new Sounds();
+  /** Undefined when the `ads` feature flag is off: no ad offers or interstitials at all. */
+  private ads = createAdService();
   private profile: Profile = this.store.load();
   private run?: RunState;
   private view: DrawView = { hints: [], tierColors: false, showChests: false };
@@ -337,14 +356,69 @@ export class App {
     );
   }
 
-  private showOutOfEnergy() {
-    if (!this.run) return;
-    const kept = gemsKept(this.run.gems, 'exhausted');
+  private showOutOfEnergy(adFailed = false) {
+    const run = this.run;
+    if (!run || run.status !== 'outOfEnergy') return;
+    const kept = gemsKept(run.gems, 'exhausted');
     const pct = Math.round(CONFIG.run.exhaustedKeepRatio * 100);
+    const offer = !!this.ads && canUseEnergyAd(run);
+    const actions: ModalAction[] = [];
+    if (offer) {
+      actions.push({
+        html: `📺 Watch an ad for +${CONFIG.ads.rewardedEnergy} energy`,
+        primary: true,
+        onClick: () => void this.watchEnergyAd(),
+      });
+    }
+    actions.push({ label: offer ? 'Get carried out' : 'Continue', primary: !offer, onClick: () => this.finishRun('exhausted') });
     showModal(
-      `<h2>Out of energy!</h2><p>You collapse and get carried out. You keep ${pct}% of your gems: <strong>${kept}</strong> of ${this.run.gems}.</p>`,
-      [{ label: 'Continue', primary: true, onClick: () => this.finishRun('exhausted') }],
+      `<h2>Out of energy!</h2>
+       ${adFailed ? '<p class="ad-error">The ad couldn\'t play. You can try again.</p>' : ''}
+       <p>You collapse and get carried out. You keep ${pct}% of your gems: <strong>${kept}</strong> of ${run.gems}.</p>`,
+      actions,
     );
+  }
+
+  // ---------- Ads ----------
+
+  /** Plays an ad with game audio paused. Resolves undefined when ads are off. */
+  private async playAd<T>(show: (ads: AdService) => Promise<T>): Promise<T | undefined> {
+    if (!this.ads) return undefined;
+    this.sounds.synth.paused = true;
+    try {
+      return await show(this.ads);
+    } catch (err) {
+      console.warn('[deep-dig] ad failed', err);
+      return undefined;
+    } finally {
+      this.sounds.synth.paused = false;
+    }
+  }
+
+  private async watchEnergyAd() {
+    const rewarded = await this.playAd((ads) => ads.showRewarded());
+    const run = this.run;
+    if (!run) return;
+    const saved = rewarded ? grantAdEnergy(run) : run;
+    if (saved === run) return this.showOutOfEnergy(true);
+    this.setRun(saved);
+    this.sounds.reward();
+    replayClass($('energy'), 'gain');
+  }
+
+  private async watchDoubleAd(summary: RunSummary, newBest: boolean) {
+    const rewarded = await this.playAd((ads) => ads.showRewarded());
+    if (!rewarded) return this.showSummary(summary, newBest, { adFailed: true });
+    const doubled = doubleRunGems(this.profile, summary);
+    this.setProfile(doubled.profile);
+    this.sounds.reward();
+    this.showSummary(doubled.summary, newBest);
+  }
+
+  /** Summary → hub, with an occasional interstitial in between (never during a run). */
+  private async leaveSummary() {
+    if (shouldShowInterstitial(this.profile.runsCompleted)) await this.playAd((ads) => ads.showInterstitial());
+    this.showHub();
   }
 
   private finishRun(reason: EndReason) {
@@ -353,12 +427,24 @@ export class App {
     this.run = undefined;
     const { profile, newBest } = applyRunResult(this.profile, summary);
     this.setProfile(profile);
-    this.showSummary(summary, newBest);
+    this.showSummary(summary, newBest, { fanfare: true });
   }
 
-  private showSummary(s: RunSummary, newBest: boolean) {
-    if (newBest) this.sounds.newBest();
-    else this.sounds.runEnd(s.reason === 'left');
+  private showSummary(s: RunSummary, newBest: boolean, opts: { adFailed?: boolean; fanfare?: boolean } = {}) {
+    if (opts.fanfare) {
+      if (newBest) this.sounds.newBest();
+      else this.sounds.runEnd(s.reason === 'left');
+    }
+    const actions: ModalAction[] = [];
+    if (this.ads && s.gemsKept > 0 && !s.gemsDoubled) {
+      const bonus = s.gemsKept * (CONFIG.ads.gemMultiplier - 1);
+      actions.push({
+        html: `📺 Double gems from this run <span class="ad-bonus">+${bonus}</span>`,
+        className: 'ad-btn',
+        onClick: () => void this.watchDoubleAd(s, newBest),
+      });
+    }
+    actions.push({ label: 'Continue', primary: true, onClick: () => void this.leaveSummary() });
     const title = s.reason === 'left' ? 'Back on the surface' : 'Carried out';
     showModal(
       `${newBest ? '<div class="badge">New best depth!</div>' : ''}
@@ -367,10 +453,11 @@ export class App {
          <div class="summary-row"><span>Depth reached</span><strong>Floor ${s.depth}</strong></div>
          <div class="summary-row"><span>Blocks broken</span><strong>${s.blocksBroken}</strong></div>
          <div class="summary-row"><span>Gems found</span><strong>${s.gemsFound}</strong></div>
-         <div class="summary-row highlight"><span>Gems kept</span><strong>${s.gemsKept}</strong></div>
+         <div class="summary-row highlight${s.gemsDoubled ? ' doubled' : ''}"><span>Gems kept${s.gemsDoubled ? ` <em>×${CONFIG.ads.gemMultiplier}</em>` : ''}</span><strong>${s.gemsKept}</strong></div>
        </div>
+       ${opts.adFailed ? '<p class="ad-error">The ad couldn\'t play.</p>' : ''}
        <div class="seed">seed ${s.seed}</div>`,
-      [{ label: 'Continue', primary: true, onClick: () => this.showHub() }],
+      actions,
     );
   }
 }

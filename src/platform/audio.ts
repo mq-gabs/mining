@@ -33,7 +33,10 @@ export class Synth {
   private ctx?: AudioContext;
   private master?: GainNode;
   private noiseBuffer?: AudioBuffer;
+  /** The player's mute setting. */
   muted = false;
+  /** Temporarily silent, e.g. while an ad plays (ad networks require game audio to stop). */
+  paused = false;
 
   unlock() {
     try {
@@ -52,7 +55,7 @@ export class Synth {
   }
 
   private live(): { ctx: AudioContext; out: GainNode } | undefined {
-    if (this.muted || !this.ctx || !this.master || this.ctx.state !== 'running') return undefined;
+    if (this.muted || this.paused || !this.ctx || !this.master || this.ctx.state !== 'running') return undefined;
     return { ctx: this.ctx, out: this.master };
   }
 

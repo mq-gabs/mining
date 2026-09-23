@@ -9,8 +9,9 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   M4 tools (Dynamite, Drill, Scanner via `useTool` in `run.ts`; unlocks/charges as upgrades with `requires`),
   M5 juice (canvas particles/pops/rings/floor slide in `gridRenderer.ts`, DOM gem flights in `ui/fx.ts`),
   synthesized sound (`platform/audio.ts` synth, recipes + event mapping in `ui/sounds.ts`), mute toggle,
-  responsive pass (narrow phones, landscape side-by-side layout).
-- Next: M6 ads (`AdService` mock).
+  responsive pass (narrow phones, landscape side-by-side layout),
+  M6 ads (`AdService` + `MockAdService` in `platform/ads.ts`, behind the `ads` feature flag).
+- All six milestones of the spec are done.
 
 ## Commands
 
@@ -37,7 +38,13 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   parsed through `parseProfile`, which clamps and fills defaults. Bump `PROFILE_VERSION` on shape changes.
 - Sounds are generated with Web Audio, never loaded from files. Device prefs (mute) live in `SettingsStore`,
   separate from the profile, so "Reset progress" keeps them. Sound, like other juice, hangs off `RunEvent`s.
-- Ads (M6) must stay behind an `AdService` interface so the mock can be swapped for the CrazyGames/Poki SDK.
+- Ads must stay behind the `AdService` interface so the mock can be swapped for the CrazyGames/Poki SDK
+  (only `createAdService()` changes). Game audio is paused while an ad plays (`Synth.paused`).
+  Ad rules are pure and tested: `grantAdEnergy`/`canUseEnergyAd` (run.ts), `doubleRunGems`/`shouldShowInterstitial`
+  (progression.ts). The interstitial shows after every 3rd completed run (`runsCompleted % N`), so no extra save state.
+- Feature flags live only in `src/flags.ts` (`DEFAULT_FLAGS`, overridable with `VITE_FLAGS` or dev-only `?flags=`).
+  Check them with `isEnabled()` in UI/platform code, never in `src/game/` (keep logic flag-free and testable).
+  When `ads` is off, `createAdService()` returns undefined and the UI shows no ad offers.
 
 ## Deliberate deviations from the spec (keep unless the user says otherwise)
 

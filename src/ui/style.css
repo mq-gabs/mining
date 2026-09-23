@@ -729,6 +729,93 @@ body {
     animation: none;
   }
 }
+/* ---------- Ads ---------- */
+.btn.ad-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-color: #3f7f95;
+  background: linear-gradient(180deg, #1f4452, #17323c);
+}
+.ad-bonus {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--gem);
+  color: #062028;
+  font-size: 13px;
+  font-weight: 800;
+}
+.ad-error {
+  color: var(--danger) !important;
+  font-size: 14px;
+}
+.summary-row.doubled {
+  animation: bump 220ms ease-out;
+}
+.summary-row em {
+  font-style: normal;
+  font-weight: 800;
+  color: var(--gem);
+}
+.ad-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 24px;
+  background: #050403;
+  color: var(--text);
+  animation: fade-in 150ms ease-out;
+}
+.ad-label {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 14px);
+  left: 16px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ad-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 36px;
+  border: 1px dashed #4a3a2e;
+  border-radius: 18px;
+  text-align: center;
+}
+.ad-art {
+  font-size: 56px;
+}
+.ad-card span {
+  color: var(--muted);
+}
+.ad-progress {
+  width: min(280px, 80%);
+  height: 6px;
+  border-radius: 3px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.ad-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left;
+  animation: ad-progress linear forwards;
+}
+
+@keyframes ad-progress {
+  from {
+    transform: scaleX(0);
+  }
+}
 @keyframes fade-in {
   from {
     opacity: 0;
