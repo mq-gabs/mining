@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#120d0b" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⛏️</text></svg>" />
+    <title>Deep Dig</title>
+  </head>
+  <body>
+    <div id="app">
+      <section id="screen-hub" class="screen hub">
+        <div class="hub-title">
+          <div class="hub-icon">⛏️</div>
+          <h1>Deep Dig</h1>
+          <p class="tagline">Dig down. Grab gems. Get out alive.</p>
+        </div>
+        <div class="hub-stats">
+          <div class="stat"><span class="stat-label">Gems</span><span class="stat-value" id="hub-gems">0</span></div>
+          <div class="stat"><span class="stat-label">Best floor</span><span class="stat-value" id="hub-best">–</span></div>
+        </div>
+        <button id="btn-start" class="btn primary big">Start Run</button>
+      </section>
+
+      <section id="screen-run" class="screen run" hidden>
+        <header class="hud">
+          <div class="hud-row">
+            <span class="hud-depth" id="hud-depth">Floor 1</span>
+            <span class="hud-gems" id="hud-gems"><span class="gem-icon"></span><span id="hud-gems-value">0</span></span>
+          </div>
+          <div class="energy" id="energy">
+            <div class="energy-fill" id="energy-fill"></div>
+            <span class="energy-text" id="energy-text">⚡ 50 / 50</span>
+          </div>
+        </header>
+        <div class="grid-wrap" id="grid-wrap"><canvas id="grid"></canvas></div>
+        <footer class="run-bar">
+          <button id="btn-leave" class="btn">Leave Mine</button>
+        </footer>
+      </section>
+
+      <div id="modal" class="modal" hidden>
+        <div class="modal-card" id="modal-card"></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
