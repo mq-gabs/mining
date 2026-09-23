@@ -39,3 +39,33 @@ export class ProfileStore {
     return newProfile();
   }
 }
+
+/** Device preferences, kept apart from game progress so resetting progress keeps them. */
+export interface Settings {
+  muted: boolean;
+}
+
+const SETTINGS_KEY = 'deep-dig/settings';
+
+export class SettingsStore {
+  private memory: Settings | undefined;
+
+  load(): Settings {
+    if (this.memory) return this.memory;
+    try {
+      const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Partial<Settings>;
+      return { muted: raw.muted === true };
+    } catch {
+      return { muted: false };
+    }
+  }
+
+  save(settings: Settings) {
+    this.memory = settings;
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    } catch {
+      // keep in memory only
+    }
+  }
+}

@@ -50,6 +50,24 @@ body {
   display: flex;
   flex-direction: column;
   padding: 16px;
+  animation: fade-in 180ms ease-out;
+}
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  font-size: 20px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.icon-btn:active {
+  transform: scale(0.92);
 }
 
 /* ---------- Buttons ---------- */
@@ -93,8 +111,14 @@ body {
   gap: 14px;
 }
 .hub-header {
+  position: relative;
   text-align: center;
-  padding-top: 8px;
+  padding: 8px 44px 0;
+}
+.hub-mute {
+  position: absolute;
+  top: 0;
+  right: 0;
 }
 .hub h1 {
   margin: 0;
@@ -290,6 +314,26 @@ body {
   font-weight: 700;
   font-size: 18px;
 }
+.hud-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.hud-right .icon-btn {
+  width: 36px;
+  height: 36px;
+  font-size: 16px;
+  /* Keep a 44px tap target around the smaller visual. */
+  position: relative;
+}
+.hud-right .icon-btn::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+}
+.hud-gems.bump {
+  animation: bump 160ms ease-out;
+}
 .hud-gems {
   display: inline-flex;
   align-items: center;
@@ -324,6 +368,15 @@ body {
 .energy.low .energy-fill {
   background: linear-gradient(180deg, #ff8a8a, var(--danger));
 }
+.energy.low {
+  animation: low-pulse 800ms ease-in-out infinite;
+}
+.energy.gain {
+  animation: gain 260ms ease-out;
+}
+.energy.drain {
+  animation: drain 260ms ease-out;
+}
 .energy-text {
   position: absolute;
   inset: 0;
@@ -331,11 +384,10 @@ body {
   place-items: center;
   font-size: 13px;
   font-weight: 700;
-  color: #0c1418;
+  /* Light text with an outline stays readable over both the fill and the empty track. */
+  color: #fff;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.9), 0 1px 1px rgba(0, 0, 0, 0.8);
   font-variant-numeric: tabular-nums;
-}
-.energy.low .energy-text {
-  color: #2a0505;
 }
 .grid-wrap {
   flex: 1;
@@ -375,6 +427,36 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.floor-banner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  padding: 10px 26px;
+  border-radius: 14px;
+  background: rgba(13, 9, 7, 0.85);
+  border: 1px solid rgba(255, 178, 63, 0.5);
+  color: var(--accent);
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+}
+.floor-banner.show {
+  animation: banner 900ms ease-out;
+}
+.fly-gem {
+  position: fixed;
+  z-index: 20;
+  border-radius: 2px;
+  background: linear-gradient(135deg, #fff, var(--gem) 55%);
+  box-shadow: 0 0 8px var(--gem);
+  pointer-events: none;
 }
 
 /* ---------- Tools ---------- */
@@ -604,6 +686,49 @@ body {
   color: #6d6158;
 }
 
+@keyframes bump {
+  50% {
+    transform: scale(1.18);
+  }
+}
+@keyframes low-pulse {
+  50% {
+    box-shadow: 0 0 0 3px rgba(255, 90, 90, 0.45), 0 0 14px rgba(255, 90, 90, 0.6);
+  }
+}
+@keyframes gain {
+  40% {
+    box-shadow: 0 0 12px rgba(95, 211, 255, 0.9);
+    filter: brightness(1.4);
+  }
+}
+@keyframes drain {
+  40% {
+    box-shadow: 0 0 12px rgba(155, 232, 107, 0.9);
+    transform: translateX(-3px);
+  }
+}
+/* Slides in from above (we're going down) and fades out; the game stays playable underneath. */
+@keyframes banner {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -130%);
+  }
+  25%,
+  65% {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -30%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .energy.low {
+    animation: none;
+  }
+}
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -613,5 +738,86 @@ body {
   from {
     transform: scale(0.9);
     opacity: 0;
+  }
+}
+
+/* ---------- Responsive ---------- */
+
+/* Narrow phones (e.g. 320px wide). */
+@media (max-width: 360px) {
+  .hub h1 {
+    font-size: 26px;
+  }
+  .shop-item {
+    gap: 8px;
+    padding: 8px;
+  }
+  .shop-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 20px;
+  }
+  .buy-btn {
+    min-width: 68px;
+  }
+  .tool-name {
+    font-size: 10px;
+  }
+}
+
+/*
+ * Phones held sideways: a 9-row grid can't fit under the HUD, so the grid takes the left side at
+ * full height and the HUD, tools and Leave button stack in a column on the right.
+ */
+@media (orientation: landscape) and (max-height: 500px) {
+  #app {
+    max-width: 860px;
+  }
+  .screen.run {
+    display: grid;
+    grid-template-columns: 1fr minmax(220px, 300px);
+    grid-template-rows: auto 1fr auto;
+    column-gap: 12px;
+    padding: 8px 12px;
+  }
+  .run .hud {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .run .grid-wrap {
+    grid-column: 1;
+    grid-row: 1 / 4;
+  }
+  .run .run-bar {
+    grid-column: 2;
+    grid-row: 3;
+  }
+  .tool-bar {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .tool {
+    min-height: 48px;
+  }
+  .run-bar .btn {
+    min-height: 44px;
+  }
+  .hub {
+    display: grid;
+    grid-template-columns: 1fr 1.3fr;
+    grid-template-rows: auto auto 1fr;
+    column-gap: 16px;
+    padding-block: 10px;
+  }
+  .hub-header,
+  .hub-stats {
+    grid-column: 1;
+  }
+  .hub .shop-wrap {
+    grid-column: 2;
+    grid-row: 1 / 4;
+  }
+  #btn-start {
+    grid-column: 1;
+    align-self: end;
   }
 }

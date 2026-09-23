@@ -6,8 +6,11 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
 ## Status
 
 - Done: M1 core loop, M2 surface/shop/save, M3 roguelike layer (hints, hazards, chests, crystals, perks),
-  M4 tools (Dynamite, Drill, Scanner via `useTool` in `run.ts`; unlocks/charges as upgrades with `requires`).
-- Next: M5 juice/sound/mute toggle, M6 ads (`AdService` mock).
+  M4 tools (Dynamite, Drill, Scanner via `useTool` in `run.ts`; unlocks/charges as upgrades with `requires`),
+  M5 juice (canvas particles/pops/rings/floor slide in `gridRenderer.ts`, DOM gem flights in `ui/fx.ts`),
+  synthesized sound (`platform/audio.ts` synth, recipes + event mapping in `ui/sounds.ts`), mute toggle,
+  responsive pass (narrow phones, landscape side-by-side layout).
+- Next: M6 ads (`AdService` mock).
 
 ## Commands
 
@@ -32,6 +35,8 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   with `hasPerk` where they apply. Upgrades are data-driven via `CONFIG.upgrades.items` + `UPGRADE_IDS`.
 - Browser services live in `src/platform/` (localStorage `ProfileStore` with in-memory fallback). Saves are
   parsed through `parseProfile`, which clamps and fills defaults. Bump `PROFILE_VERSION` on shape changes.
+- Sounds are generated with Web Audio, never loaded from files. Device prefs (mute) live in `SettingsStore`,
+  separate from the profile, so "Reset progress" keeps them. Sound, like other juice, hangs off `RunEvent`s.
 - Ads (M6) must stay behind an `AdService` interface so the mock can be swapped for the CrazyGames/Poki SDK.
 
 ## Deliberate deviations from the spec (keep unless the user says otherwise)

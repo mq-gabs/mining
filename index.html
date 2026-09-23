@@ -11,6 +11,7 @@
     <div id="app">
       <section id="screen-hub" class="screen hub">
         <header class="hub-header">
+          <button class="icon-btn mute-btn hub-mute" data-mute aria-label="Mute sound">🔊</button>
           <h1><span class="hub-icon">⛏️</span> Deep Dig</h1>
           <p class="tagline">Dig down. Grab gems. Get out alive.</p>
         </header>
@@ -36,7 +37,10 @@
         <header class="hud">
           <div class="hud-row">
             <span class="hud-depth" id="hud-depth">Floor 1</span>
-            <span class="hud-gems" id="hud-gems"><span class="gem-icon"></span><span id="hud-gems-value">0</span></span>
+            <span class="hud-right">
+              <span class="hud-gems" id="hud-gems"><span class="gem-icon"></span><span id="hud-gems-value">0</span></span>
+              <button class="icon-btn mute-btn" data-mute aria-label="Mute sound">🔊</button>
+            </span>
           </div>
           <div class="energy" id="energy">
             <div class="energy-fill" id="energy-fill"></div>
@@ -47,6 +51,7 @@
         <div class="grid-wrap" id="grid-wrap">
           <canvas id="grid"></canvas>
           <div class="aim-hint" id="aim-hint" hidden></div>
+          <div class="floor-banner" id="floor-banner" hidden></div>
         </div>
         <footer class="run-bar">
           <div class="tool-bar" id="tool-bar" role="toolbar" aria-label="Tools"></div>

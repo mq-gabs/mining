@@ -1,6 +1,7 @@
 import type { CellHint } from '../game/hints';
 import { toColRow } from '../game/grid';
 import { Rng } from '../game/rng';
+import { GEM_TIERS, type BlockType } from '../config';
 import type { Cell, Floor, RunEvent } from '../game/types';
 import {
   BACKDROP_COLOR,
@@ -44,9 +45,45 @@ interface Puff {
   radius: number;
 }
 
+/** A particle's position is computed from its start state and age (no per-frame integration). */
+interface Particle {
+  x: number;
+  y: number;
+  /** px per second */
+  vx: number;
+  vy: number;
+  /** px per second² */
+  gravity: number;
+  size: number;
+  color: string;
+  start: number;
+  duration: number;
+  star: boolean;
+}
+
+/** A broken block's ghost that swells and fades. */
+interface Pop {
+  x: number;
+  y: number;
+  block: BlockType;
+  start: number;
+}
+
+interface Ring {
+  x: number;
+  y: number;
+  color: string;
+  start: number;
+  duration: number;
+  radius: number;
+}
+
 const HIT_SHAKE_MS = 120;
 const SCREEN_SHAKE_MS = 280;
+const POP_MS = 180;
+const FLOOR_SLIDE_MS = 260;
 const GAP = 3;
+const MAX_PARTICLES = 400;
 
 /** Draws a floor onto a canvas and maps pointer positions back to cells. */
 export class GridRenderer {
@@ -59,7 +96,16 @@ export class GridRenderer {
   private hitTimes = new Map<number, number>();
   private floats: FloatText[] = [];
   private puffs: Puff[] = [];
+  private particles: Particle[] = [];
+  private pops: Pop[] = [];
+  private rings: Ring[] = [];
   private screenShakeAt = -Infinity;
+  private screenShakeSize = 6;
+  /** The previous floor slides up and out while the new one slides in (floor transition). */
+  private slide?: { from: Floor; view: DrawView; start: number };
+  private lastDrawn?: { floor: Floor; view: DrawView };
+  /** Honour the OS "reduce motion" setting: no screen shake or floor slide. */
+  private reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -95,6 +141,13 @@ export class GridRenderer {
     return row * floor.cols + col;
   }
 
+  /** Center of a cell in client (viewport) pixels, e.g. to start a DOM effect there. */
+  cellClientCenter(floor: Floor, idx: number): { x: number; y: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    const { x, y } = this.cellCenter(floor, idx);
+    return { x: rect.left + x, y: rect.top + y };
+  }
+
   /** Center of a cell in canvas CSS pixels. */
   cellCenter(floor: Floor, idx: number): { x: number; y: number } {
     this.layout(floor);
@@ -113,28 +166,58 @@ export class GridRenderer {
   }
 
   handleEvents(floor: Floor, events: RunEvent[], now: number) {
+    // With many blocks breaking at once (tools), keep the debris per block smaller.
+    const breaks = events.filter((e) => e.type === 'break').length;
+    const debris = breaks > 3 ? 5 : 12;
     for (const e of events) {
       switch (e.type) {
-        case 'hit':
+        case 'hit': {
           this.hitTimes.set(e.idx, now);
+          const block = floor.cells[e.idx]?.block ?? 'dirt';
+          this.burst(floor, e.idx, BLOCK_COLORS[block].top, now, { count: 3, speed: 90, size: 3, duration: 220 });
           break;
+        }
+        case 'break': {
+          const { x, y } = this.cellCenter(floor, e.idx);
+          this.pops.push({ x, y, block: e.block, start: now });
+          const c = BLOCK_COLORS[e.block];
+          this.burst(floor, e.idx, c.top, now, { count: debris, speed: 170, size: 4, duration: 280 });
+          this.burst(floor, e.idx, c.bottom, now, { count: debris / 2, speed: 120, size: 5, duration: 280 });
+          break;
+        }
         case 'freeSwing':
           this.float(floor, e.idx, 'free!', CRYSTAL_COLOR, now, 14);
           break;
-        case 'gem':
-          this.float(floor, e.idx, `+${e.value}${e.doubled ? ' ×2' : ''}`, GEM_COLORS[e.tier], now);
+        case 'gem': {
+          const rank = GEM_TIERS.indexOf(e.tier);
+          this.float(floor, e.idx, `+${e.value}${e.doubled ? ' ×2' : ''}`, GEM_COLORS[e.tier], now, 20 + rank * 2);
+          this.burst(floor, e.idx, GEM_COLORS[e.tier], now, {
+            count: 5 + rank * 3,
+            speed: 110 + rank * 30,
+            size: 4 + rank,
+            duration: 280,
+            star: true,
+            gravity: 0,
+          });
+          if (rank >= 2) this.ring(floor, e.idx, GEM_COLORS[e.tier], now, 0.6 + rank * 0.15);
           break;
+        }
         case 'crystal':
           this.float(floor, e.idx, `+${e.energy}⚡`, CRYSTAL_COLOR, now);
           this.puff(floor, e.idx, 'rgba(95,211,255,0.55)', now);
+          this.burst(floor, e.idx, CRYSTAL_COLOR, now, { count: 8, speed: 120, size: 4, duration: 280, star: true, gravity: -200 });
           break;
         case 'chest':
           this.float(floor, e.idx, `+${e.gems}`, TREASURE_COLOR, now, 22);
+          this.burst(floor, e.idx, TREASURE_COLOR, now, { count: 14, speed: 160, size: 5, duration: 280, star: true });
           break;
         case 'perkOffer':
           if (e.source === 'chest') {
             const idx = events.find((x) => x.type === 'break')?.idx;
-            if (idx !== undefined) this.float(floor, idx, 'Perk!', TREASURE_COLOR, now, 22);
+            if (idx !== undefined) {
+              this.float(floor, idx, 'Perk!', TREASURE_COLOR, now, 22);
+              this.ring(floor, idx, TREASURE_COLOR, now, 1);
+            }
           }
           break;
         case 'gas':
@@ -142,25 +225,79 @@ export class GridRenderer {
           this.float(floor, e.idx, e.masked ? 'masked' : `−${e.energyLost}⚡`, GAS_COLOR, now);
           break;
         case 'caveIn':
-          this.screenShakeAt = now;
+          this.shake(now, 6);
           this.float(floor, e.idx, 'Cave-in!', '#e8c9a0', now, 16);
+          for (const n of e.filled) {
+            this.burst(floor, n, BLOCK_COLORS.dirt.top, now, { count: 6, speed: 60, size: 4, duration: 260, gravity: 900 });
+          }
+          break;
+        case 'stairsRevealed':
+          this.ring(floor, e.idx, TREASURE_COLOR, now, 1.4);
+          this.burst(floor, e.idx, '#ffcf7a', now, { count: 12, speed: 140, size: 4, duration: 280, star: true, gravity: 0 });
           break;
         case 'tool':
           if (e.tool === 'dynamite') {
-            this.screenShakeAt = now;
+            this.shake(now, 10);
             this.puff(floor, e.idx, BLAST_COLOR, now, 2.2);
+            this.burst(floor, e.idx, '#ffd27a', now, { count: 20, speed: 320, size: 3, duration: 260, gravity: 0 });
+          } else if (e.tool === 'scanner') {
+            this.ring(floor, e.idx, SCAN_COLOR, now, 1.6);
+            for (const idx of e.cells) this.puff(floor, idx, 'rgba(111,224,255,0.45)', now, 0.7);
           } else {
-            const color = e.tool === 'scanner' ? 'rgba(111,224,255,0.45)' : 'rgba(255,220,160,0.5)';
-            for (const idx of e.cells) this.puff(floor, idx, color, now, 0.7);
+            this.shake(now, 3);
+            for (const idx of e.cells) this.puff(floor, idx, 'rgba(255,220,160,0.5)', now, 0.7);
           }
           break;
         case 'descend':
+          if (this.lastDrawn && !this.reducedMotion) this.slide = { from: this.lastDrawn.floor, view: this.lastDrawn.view, start: now };
           this.hitTimes.clear();
           this.floats = [];
           this.puffs = [];
+          this.particles = [];
+          this.pops = [];
+          this.rings = [];
           break;
       }
     }
+  }
+
+  private shake(now: number, size: number) {
+    if (this.reducedMotion) return;
+    this.screenShakeAt = now;
+    this.screenShakeSize = size;
+  }
+
+  /** Particles flying out of a cell in random directions. */
+  private burst(
+    floor: Floor,
+    idx: number,
+    color: string,
+    now: number,
+    o: { count: number; speed: number; size: number; duration: number; star?: boolean; gravity?: number },
+  ) {
+    const { x, y } = this.cellCenter(floor, idx);
+    const count = Math.min(o.count, MAX_PARTICLES - this.particles.length);
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = o.speed * (0.4 + Math.random() * 0.6);
+      this.particles.push({
+        x: x + (Math.random() - 0.5) * this.cellSize * 0.4,
+        y: y + (Math.random() - 0.5) * this.cellSize * 0.4,
+        vx: Math.cos(a) * v,
+        vy: Math.sin(a) * v - o.speed * 0.3,
+        gravity: o.gravity ?? 700,
+        size: o.size * (0.6 + Math.random() * 0.6),
+        color,
+        start: now,
+        duration: o.duration * (0.7 + Math.random() * 0.3),
+        star: o.star ?? false,
+      });
+    }
+  }
+
+  private ring(floor: Floor, idx: number, color: string, now: number, scale: number) {
+    const { x, y } = this.cellCenter(floor, idx);
+    this.rings.push({ x, y, color, start: now, duration: 280, radius: this.cellSize * scale });
   }
 
   private puff(floor: Floor, idx: number, color: string, now: number, scale = 1) {
@@ -172,25 +309,54 @@ export class GridRenderer {
     const ctx = this.ctx;
     this.layout(floor);
     ctx.clearRect(0, 0, this.width, this.height);
+    this.lastDrawn = { floor, view };
 
     ctx.save();
     const shakeT = (now - this.screenShakeAt) / SCREEN_SHAKE_MS;
     if (shakeT < 1) {
-      const m = 6 * (1 - shakeT);
+      const m = this.screenShakeSize * (1 - shakeT);
       ctx.translate(Math.sin(now * 0.09) * m, Math.cos(now * 0.11) * m);
     }
 
     const s = this.cellSize;
+    const gridW = s * floor.cols;
+    const gridH = s * floor.rows;
     ctx.fillStyle = BACKDROP_COLOR;
-    roundRect(ctx, this.originX - 4, this.originY - 4, s * floor.cols + 8, s * floor.rows + 8, 12);
+    roundRect(ctx, this.originX - 4, this.originY - 4, gridW + 8, gridH + 8, 12);
     ctx.fill();
 
+    // Floor transition: the camera moves down, so the old floor leaves upward and the new one rises in.
+    const slideT = this.slide ? (now - this.slide.start) / FLOOR_SLIDE_MS : 1;
+    if (this.slide && slideT < 1) {
+      const e = 1 - (1 - slideT) ** 3;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(this.originX, this.originY, gridW, gridH);
+      ctx.clip();
+      this.drawCells(this.slide.from, this.slide.view, now, -e * gridH);
+      this.drawCells(floor, view, now, (1 - e) * gridH);
+      ctx.restore();
+    } else {
+      this.slide = undefined;
+      this.drawCells(floor, view, now, 0);
+    }
+
+    this.drawPops(now);
+    this.drawPuffs(now);
+    this.drawRings(now);
+    this.drawParticles(now);
+    this.drawFloats(now);
+    ctx.restore();
+  }
+
+  private drawCells(floor: Floor, view: DrawView, now: number, offsetY: number) {
+    const s = this.cellSize;
     floor.cells.forEach((cell, idx) => {
       const { col, row } = toColRow(floor, idx);
       let x = this.originX + col * s;
-      const y = this.originY + row * s;
+      const y = this.originY + row * s + offsetY;
       const hitAt = this.hitTimes.get(idx);
-      if (hitAt !== undefined) {
+      if (hitAt !== undefined && offsetY === 0) {
         const t = (now - hitAt) / HIT_SHAKE_MS;
         if (t < 1) x += Math.sin(t * Math.PI * 4) * 3 * (1 - t);
         else this.hitTimes.delete(idx);
@@ -198,10 +364,6 @@ export class GridRenderer {
       if (cell.open) this.drawOpen(floor, cell, idx, x, y, s, now);
       else this.drawBlock(floor, cell, idx, x, y, s, view, now);
     });
-
-    this.drawPuffs(now);
-    this.drawFloats(now);
-    ctx.restore();
   }
 
   private drawOpen(floor: Floor, cell: Cell, idx: number, x: number, y: number, s: number, now: number) {
@@ -444,6 +606,62 @@ export class GridRenderer {
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
       ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  private drawPops(now: number) {
+    const ctx = this.ctx;
+    this.pops = this.pops.filter((p) => now - p.start < POP_MS);
+    for (const p of this.pops) {
+      const t = (now - p.start) / POP_MS;
+      const size = (this.cellSize - GAP) * (1 + 0.25 * t);
+      const colors = BLOCK_COLORS[p.block];
+      ctx.globalAlpha = (1 - t) * 0.9;
+      ctx.fillStyle = colors.top;
+      roundRect(ctx, p.x - size / 2, p.y - size / 2, size, size, 6);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  private drawRings(now: number) {
+    const ctx = this.ctx;
+    this.rings = this.rings.filter((r) => now - r.start < r.duration);
+    for (const r of this.rings) {
+      const t = (now - r.start) / r.duration;
+      ctx.globalAlpha = 1 - t;
+      ctx.strokeStyle = r.color;
+      ctx.lineWidth = 3 * (1 - t) + 1;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, r.radius * (0.3 + 0.7 * (1 - (1 - t) ** 2)), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  private drawParticles(now: number) {
+    const ctx = this.ctx;
+    this.particles = this.particles.filter((p) => now - p.start < p.duration);
+    for (const p of this.particles) {
+      const age = (now - p.start) / 1000;
+      const t = (now - p.start) / p.duration;
+      const x = p.x + p.vx * age;
+      const y = p.y + p.vy * age + 0.5 * p.gravity * age * age;
+      const r = p.size * (1 - t * 0.5);
+      ctx.globalAlpha = 1 - t * t;
+      ctx.fillStyle = p.color;
+      if (p.star) {
+        ctx.beginPath();
+        ctx.moveTo(x, y - r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.quadraticCurveTo(x, y, x, y + r);
+        ctx.quadraticCurveTo(x, y, x - r, y);
+        ctx.quadraticCurveTo(x, y, x, y - r);
+        ctx.fill();
+      } else {
+        ctx.fillRect(x - r / 2, y - r / 2, r, r);
+      }
     }
     ctx.globalAlpha = 1;
   }

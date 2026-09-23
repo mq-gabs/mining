@@ -1,4 +1,4 @@
-import { CONFIG, TOOL_IDS, type ToolId, type UpgradeId } from '../config';
+import { CONFIG, GEM_TIERS, TOOL_IDS, type ToolId, type UpgradeId } from '../config';
 import { gemsKept } from '../game/economy';
 import { computeHints } from '../game/hints';
 import { hasPerk, PERKS } from '../game/perks';
@@ -6,10 +6,13 @@ import { applyRunResult, buyUpgrade, modifiersFromProfile, type Profile } from '
 import { choosePerk, createRun, endRun, tapCell, useTool, type ActionResult } from '../game/run';
 import { randomSeed } from '../game/rng';
 import type { EndReason, PerkId, RunEvent, RunState, RunSummary } from '../game/types';
-import { ProfileStore } from '../platform/storage';
+import { ProfileStore, SettingsStore } from '../platform/storage';
+import { flyGem, replayClass, showBanner } from './fx';
 import { GridRenderer, type DrawView } from './gridRenderer';
 import { isModalOpen, showModal } from './modal';
 import { renderShop } from './shop';
+import { Sounds } from './sounds';
+import { GEM_COLORS, TREASURE_COLOR } from './theme';
 import { TOOL_META } from './tools';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -19,6 +22,8 @@ const LOW_ENERGY = 0.2;
 
 export class App {
   private store = new ProfileStore();
+  private settings = new SettingsStore();
+  private sounds = new Sounds();
   private profile: Profile = this.store.load();
   private run?: RunState;
   private view: DrawView = { hints: [], tierColors: false, showChests: false };
@@ -37,6 +42,16 @@ export class App {
     $('grid').addEventListener('pointerdown', (e) => this.onGridPointer(e));
     $('perk-bar').addEventListener('click', () => this.showActivePerks());
     $('tool-bar').addEventListener('click', (e) => this.onToolButton(e));
+    for (const btn of document.querySelectorAll('[data-mute]')) btn.addEventListener('click', () => this.toggleMute());
+    // Audio can only start from a user gesture; every tap makes sure it's running.
+    document.addEventListener('pointerdown', () => this.sounds.synth.unlock(), { capture: true });
+    // Generic click for plain buttons (buying, perks, tools and mute have their own sounds).
+    document.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest('.btn');
+      if (btn && !btn.matches('.buy-btn, .perk-card')) this.sounds.click();
+    });
+    this.sounds.synth.muted = this.settings.load().muted;
+    this.renderMute();
     this.showHub();
     if (import.meta.env.DEV) this.exposeDebugHook();
   }
@@ -57,6 +72,25 @@ export class App {
         hints: () => app.view.hints,
       },
     });
+  }
+
+  // ---------- Sound ----------
+
+  private toggleMute() {
+    const muted = !this.sounds.synth.muted;
+    this.sounds.synth.muted = muted;
+    this.settings.save({ muted });
+    this.renderMute();
+    this.sounds.click();
+  }
+
+  private renderMute() {
+    const muted = this.sounds.synth.muted;
+    for (const btn of document.querySelectorAll<HTMLElement>('[data-mute]')) {
+      btn.textContent = muted ? '🔇' : '🔊';
+      btn.setAttribute('aria-label', muted ? 'Unmute sound' : 'Mute sound');
+      btn.setAttribute('aria-pressed', String(muted));
+    }
   }
 
   // ---------- Screens ----------
@@ -82,6 +116,7 @@ export class App {
   private buy(id: UpgradeId) {
     const next = buyUpgrade(this.profile, id);
     if (next === this.profile) return;
+    this.sounds.buy();
     this.setProfile(next);
     this.renderHub(id);
   }
@@ -109,6 +144,7 @@ export class App {
     this.armed = undefined;
     this.setRun(createRun(seed, modifiersFromProfile(this.profile)));
     this.loop();
+    showBanner($('floor-banner'), 'Floor 1');
   }
 
   private loop = () => {
@@ -128,11 +164,35 @@ export class App {
 
   /** Applies the result of a game action: new state, effects, and follow-up UI. */
   private apply({ run, events }: ActionResult) {
-    if (run === this.run) return;
+    const prev = this.run;
+    if (run === prev || !prev) return;
     if (events.some((e) => e.type === 'descend')) this.armed = undefined;
     this.setRun(run);
     this.renderer.handleEvents(run.floor, events, performance.now());
+    this.sounds.playEvents(events, prev, run, LOW_ENERGY);
+    this.playHudEffects(events, prev, run);
     this.onEvents(events);
+  }
+
+  /** Effects outside the canvas: gems flying to the counter, energy bar flashes, the floor banner. */
+  private playHudEffects(events: RunEvent[], prev: RunState, run: RunState) {
+    const counter = $('hud-gems');
+    const bump = () => replayClass(counter, 'bump');
+    let flights = 0;
+    for (const e of events) {
+      if (e.type === 'gem' && flights < 8) {
+        const rank = GEM_TIERS.indexOf(e.tier);
+        const from = this.renderer.cellClientCenter(run.floor, e.idx);
+        flyGem(from, counter, GEM_COLORS[e.tier], 12 + rank * 3, flights++ * 40, bump);
+      }
+      if (e.type === 'chest') {
+        const from = this.renderer.cellClientCenter(run.floor, e.idx);
+        for (let i = 0; i < 3; i++) flyGem(from, counter, TREASURE_COLOR, 12, i * 40, bump);
+      }
+      if (e.type === 'descend') showBanner($('floor-banner'), `Floor ${e.depth}`);
+    }
+    if (run.energy > prev.energy) replayClass($('energy'), 'gain');
+    else if (prev.energy - run.energy > CONFIG.energy.tapCost) replayClass($('energy'), 'drain');
   }
 
   // ---------- Input ----------
@@ -142,6 +202,7 @@ export class App {
     if (!this.run || this.run.status !== 'playing' || isModalOpen()) return;
     const idx = this.renderer.cellAt(this.run.floor, e.clientX, e.clientY);
     if (idx === undefined) return;
+    this.sounds.synth.unlock();
     const cell = this.run.floor.cells[idx];
     // Revealed stairs always take you down, even with a tool armed.
     if (this.armed && !(cell.open && cell.content.kind === 'stairs')) {
@@ -160,11 +221,13 @@ export class App {
     const tool = btn.dataset.tool as ToolId | 'pickaxe';
     // Tapping the armed tool again puts it away.
     this.armed = tool === 'pickaxe' || tool === this.armed ? undefined : tool;
+    this.sounds.toolArm();
     this.updateHud();
   }
 
   /** The armed tool can't be used there (out of reach, or nothing to affect). */
   private rejectToolTarget() {
+    this.sounds.reject();
     const btn = $('tool-bar').querySelector('.armed');
     btn?.classList.remove('reject');
     void (btn as HTMLElement | null)?.offsetWidth; // restart the animation
@@ -186,6 +249,7 @@ export class App {
     if (!run || run.status !== 'choosingPerk' || !run.perkOffer) return;
     const { source, choices } = run.perkOffer;
     const subtitle = source === 'chest' ? 'You found a relic in the chest.' : `You reached floor ${run.depth}.`;
+    if (source === 'floor') this.sounds.perkOffer();
     showModal(
       `<h2>Choose a perk</h2><p>${subtitle} Perks last until the end of this run.</p>`,
       choices.map((id) => ({
@@ -293,6 +357,8 @@ export class App {
   }
 
   private showSummary(s: RunSummary, newBest: boolean) {
+    if (newBest) this.sounds.newBest();
+    else this.sounds.runEnd(s.reason === 'left');
     const title = s.reason === 'left' ? 'Back on the surface' : 'Carried out';
     showModal(
       `${newBest ? '<div class="badge">New best depth!</div>' : ''}
