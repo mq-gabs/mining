@@ -1,4 +1,4 @@
-# Deep Dig
+# Rush Dig
 
 A mobile-first roguelike mining game. TypeScript + Vite + Canvas, no framework.
 
