@@ -23,6 +23,10 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
 - `npm test`: Vitest. `npm run typecheck`, `npm run build` (tsc + vite build)
 - `npm run sim -- <players> <runs>`: balance simulator (bots play full careers). Use ~80–100 players.
   It takes about a minute, so run it with a timeout (`timeout -s KILL 110 node node_modules/.bin/vite-node scripts/sim.ts 80 12`).
+  After the table it prints each bot's deepest floor (min, max, mode, mean, std dev, histogram).
+  `SIM_GOAL=20` adds the share of bots that reach that floor, and on which run. `SIM_STRATEGIES=1` runs five bot
+  sets instead (clean 100/75/50/25% of every floor, or stairs only), a full report each; it takes ~5 minutes.
+  Results: `docs/reports/2026-09-24-cleaning-strategies.md`.
 
 ## Architecture rules
 

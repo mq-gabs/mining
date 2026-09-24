@@ -53,6 +53,11 @@ const CLEAN_ABORT = 1.2;
  */
 const CLEAN_POLICY = (process.env.SIM_CLEAN ?? 'deep') as 'none' | 'leave' | 'deep' | 'all';
 const CLEAN_MIN_DEPTH = Number(process.env.SIM_CLEAN_MIN_DEPTH ?? 6);
+/**
+ * Depth goal (SIM_GOAL env var, off by default): reports the share of bots that reach this floor in their
+ * career, and on which run they first did.
+ */
+const GOAL = Number(process.env.SIM_GOAL ?? 0);
 /** Floor cost guess before the bot has finished a floor. */
 const FIRST_FLOOR_COST = 20;
 
@@ -81,6 +86,33 @@ function scannedScore(c: Cell): number {
 /** Energy the pickaxe would spend to break every block left on the floor. */
 function clearCost(run: RunState): number {
   return run.floor.cells.filter((c) => !c.open).reduce((sum, c) => sum + tapsToBreak(c.hp, run.mods.power), 0);
+}
+
+/**
+ * Strategy sets (SIM_STRATEGIES=1): each set of bots breaks at least `quota` of every floor's blocks before
+ * taking the stairs (1 = clean every floor; 0 = only what it takes to find the stairs). The quota is strict:
+ * the bot doesn't give up on it to save energy, and it leaves the mine on arrival at a floor it can't afford.
+ * Without SIM_STRATEGIES the bot follows `CLEAN_POLICY` instead.
+ */
+const STRATEGIES: { name: string; quota: number }[] = [
+  { name: 'Clean 100% of every floor', quota: 1 },
+  { name: 'Clean at least 75% of every floor', quota: 0.75 },
+  { name: 'Clean at least 50% of every floor', quota: 0.5 },
+  { name: 'Clean at least 25% of every floor', quota: 0.25 },
+  { name: 'Only what it takes to find the stairs', quota: 0 },
+];
+
+/** Share of the floor's blocks broken (every cell but the entrance starts as a block; cave-ins undo breaks). */
+function brokenShare(run: RunState): number {
+  const f = run.floor;
+  const closed = f.cells.filter((c) => !c.open).length;
+  return 1 - closed / (f.cells.length - 1);
+}
+
+/** The floor still needs digging to meet `quota` (1 means the floor must be fully clean). */
+function belowQuota(run: RunState, quota: number): boolean {
+  if (quota >= 1) return !run.floor.cleared;
+  return brokenShare(run) < quota;
 }
 
 /** Clean this floor on the way down (mid-run), per `CLEAN_POLICY`. */
@@ -159,7 +191,8 @@ function pickTool(run: RunState, target: number, cleaning = false): { tool: Tool
 }
 
 /** Plays one run. Leaves on arrival at a floor if energy looks too low to clear it. */
-function playRun(seed: number, profile: Profile, rand: Rand): RunResult {
+/** `quota`: play a strategy set (see `STRATEGIES`) instead of `CLEAN_POLICY`. */
+function playRun(seed: number, profile: Profile, rand: Rand, quota?: number): RunResult {
   let run = createRun(seed, modifiersFromProfile(profile));
   const rush = { rushBlocks: 0, rushGems: 0 };
   let cleanDepths = 0;
@@ -174,7 +207,8 @@ function playRun(seed: number, profile: Profile, rand: Rand): RunResult {
   let energyAtFloorStart = run.energy;
   const floorCosts: number[] = [];
   const avgCost = () => (floorCosts.length ? floorCosts.reduce((a, b) => a + b, 0) / floorCosts.length : FIRST_FLOOR_COST);
-  let cleaning = shouldClean(run, avgCost());
+  const strict = quota !== undefined;
+  let cleaning = strict ? belowQuota(run, quota) : shouldClean(run, avgCost());
   /** Clearing the last floor before leaving: never abort, and leave once it's clear. */
   let leaving = false;
   let steps = 0;
@@ -188,7 +222,8 @@ function playRun(seed: number, profile: Profile, rand: Rand): RunResult {
       run = choosePerk(run, pick).run;
       continue;
     }
-    if (cleaning && !leaving && !run.rush && run.energy < avgCost() * CLEAN_ABORT) cleaning = false;
+    if (strict) cleaning = belowQuota(run, quota);
+    else if (cleaning && !leaving && !run.rush && run.energy < avgCost() * CLEAN_ABORT) cleaning = false;
     const t = pickTarget(run, rand, cleaning);
     if (t === undefined) break;
     const depth = run.depth;
@@ -208,12 +243,13 @@ function playRun(seed: number, profile: Profile, rand: Rand): RunResult {
     if (run.depth === depth && run.floor.cleared && !wasCleared) cleanDepths += depth;
     if (run.depth > depth) {
       // Cleaned floors cost far more than a normal one, so they'd skew the estimate.
-      if (!cleaning) floorCosts.push(energyAtFloorStart - run.energy);
+      // (With a strategy quota every floor costs the same kind of effort, so they all count.)
+      if (strict || !cleaning) floorCosts.push(energyAtFloorStart - run.energy);
       energyAtFloorStart = run.energy;
       // Deeper floors are harder, so be a little conservative.
       if (run.energy < avgCost() * 0.9 && !run.rush) {
         // About to leave: spend the leftover energy clearing this floor first, if it's enough.
-        if (CLEAN_POLICY === 'none' || runMultiplier(run) >= CONFIG.cleanBonus.maxMult || clearCost(run) > run.energy) {
+        if (strict || CLEAN_POLICY === 'none' || runMultiplier(run) >= CONFIG.cleanBonus.maxMult || clearCost(run) > run.energy) {
           // (The refund only comes once the floor is clear, so the bot must afford the whole cost up front.)
           return result('left');
         }
@@ -221,7 +257,7 @@ function playRun(seed: number, profile: Profile, rand: Rand): RunResult {
         leaving = true;
         continue;
       }
-      cleaning = shouldClean(run, avgCost());
+      cleaning = strict ? belowQuota(run, quota) : shouldClean(run, avgCost());
     } else if (leaving && run.floor.cleared) {
       return result('left');
     }
@@ -241,17 +277,24 @@ function shop(profile: Profile): { profile: Profile; bought: number } {
   }
 }
 
-function simulateCareers(players: number, runs: number) {
+function simulateCareers(players: number, runs: number, quota?: number) {
   let rs = 1;
   const rand: Rand = () => (rs = (rs * 16807) % 2147483647) / 2147483647;
   const rows = Array.from({ length: runs }, () => ({
     depth: 0, kept: 0, bought: 0, left: 0, lvl: 0, tools: 0, rushes: 0, rushBlocks: 0, rushGems: 0, gems: 0,
     clean: 0, cleanDepths: 0, mult: 0, bonus: 0,
   }));
+  /** Each bot's deepest floor over its whole career. */
+  const bestDepths: number[] = [];
+  /** Per bot that reached `GOAL`: the run number (1-based) it first did. */
+  const goalRuns: number[] = [];
   for (let p = 0; p < players; p++) {
     let profile = newProfile();
+    let best = 0;
     for (let r = 0; r < runs; r++) {
-      const { summary, rushes, rushBlocks, rushGems, cleanDepths } = playRun((p * 1000 + r + 1) * 2654435761, profile, rand);
+      const { summary, rushes, rushBlocks, rushGems, cleanDepths } = playRun((p * 1000 + r + 1) * 2654435761, profile, rand, quota);
+      if (GOAL && best < GOAL && summary.depth >= GOAL) goalRuns.push(r + 1);
+      best = Math.max(best, summary.depth);
       profile = applyRunResult(profile, summary).profile;
       const res = shop(profile);
       profile = res.profile;
@@ -272,6 +315,7 @@ function simulateCareers(players: number, runs: number) {
       row.mult += summary.multiplier / players;
       row.bonus += summary.bonusGems;
     }
+    bestDepths.push(best);
   }
   console.log(
     'run | avg depth | gems kept | upgrades bought | total levels | left voluntarily | tool charges | rushes | floors/rush | blocks/rush | rush gems' +
@@ -288,6 +332,51 @@ function simulateCareers(players: number, runs: number) {
         `${r.mult.toFixed(2).padStart(4)} | ${((r.bonus / Math.max(1, r.kept * players)) * 100).toFixed(0).padStart(9)}%`,
     );
   });
+  printBestDepths(bestDepths, runs);
+  if (GOAL) printGoal(goalRuns, players, runs);
 }
 
-simulateCareers(Number(process.argv[2] ?? 200), Number(process.argv[3] ?? 15));
+/** min, max, mode(s) with their count, mean and (population) standard deviation. */
+function stats(values: number[]) {
+  const n = values.length;
+  const mean = values.reduce((a, b) => a + b, 0) / n;
+  const sd = Math.sqrt(values.reduce((a, d) => a + (d - mean) ** 2, 0) / n);
+  const counts = new Map<number, number>();
+  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
+  const top = Math.max(...counts.values());
+  const modes = [...counts].filter(([, c]) => c === top).map(([v]) => v).sort((a, b) => a - b);
+  const line =
+    `min ${Math.min(...values)} | max ${Math.max(...values)} | mode ${modes.join(', ')} (${top} bots) | ` +
+    `mean ${mean.toFixed(1)} | std dev ${sd.toFixed(1)}`;
+  return { counts, line };
+}
+
+function printHistogram(counts: Map<number, number>) {
+  for (const [v, c] of [...counts].sort((a, b) => a[0] - b[0])) console.log(`${String(v).padStart(3)} | ${'#'.repeat(c)} ${c}`);
+}
+
+function printGoal(goalRuns: number[], players: number, runs: number) {
+  const pct = ((goalRuns.length / players) * 100).toFixed(0);
+  console.log(`\nGoal: floor ${GOAL} within ${runs} runs: ${goalRuns.length} of ${players} bots (${pct}%)`);
+  if (goalRuns.length === 0) return;
+  const { counts, line } = stats(goalRuns);
+  console.log(`First run that reached it: ${line}`);
+  printHistogram(counts);
+}
+
+/** Spread of each bot's deepest floor over its career: min, max, mode, mean, standard deviation, histogram. */
+function printBestDepths(depths: number[], runs: number) {
+  const { counts, line } = stats(depths);
+  console.log(`\nDeepest floor per bot over ${runs} runs (${depths.length} bots)`);
+  console.log(line);
+  printHistogram(counts);
+}
+
+const players = Number(process.argv[2] ?? 200);
+const runs = Number(process.argv[3] ?? 15);
+if (process.env.SIM_STRATEGIES) {
+  for (const s of STRATEGIES) {
+    console.log(`\n=== ${s.name} (${players} bots) ===`);
+    simulateCareers(players, runs, s.quota);
+  }
+} else simulateCareers(players, runs);
