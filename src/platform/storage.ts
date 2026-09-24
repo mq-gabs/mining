@@ -1,5 +1,6 @@
 import { CONFIG } from '../config';
 import { newProfile, parseProfile, type Profile } from '../game/progression';
+import { isLocale, type Locale } from '../i18n';
 
 const PROFILE_KEY = 'deep-dig/profile';
 
@@ -44,6 +45,8 @@ export class ProfileStore {
 /** Device preferences, kept apart from game progress so resetting progress keeps them. */
 export interface Settings {
   muted: boolean;
+  /** Chosen language; undefined means "follow the browser" (see `detectLocale`). */
+  language?: Locale;
   /** Slider values, 0..1. */
   musicVolume: number;
   sfxVolume: number;
@@ -56,6 +59,7 @@ export function parseSettings(raw: unknown): Settings {
     typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : fallback;
   return {
     muted: r.muted === true,
+    language: isLocale(r.language) ? r.language : undefined,
     musicVolume: volume(r.musicVolume, CONFIG.music.defaultVolume.music),
     sfxVolume: volume(r.sfxVolume, CONFIG.music.defaultVolume.sfx),
   };

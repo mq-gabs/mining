@@ -12,7 +12,8 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   responsive pass (narrow phones, landscape side-by-side layout),
   M6 ads (`AdService` + `MockAdService` in `platform/ads.ts`, behind the `ads` feature flag).
 - All six milestones of the spec are done. Extra: procedural adaptive background music (`ui/music.ts`),
-  Rush (see the Rush section below), and the clean floor bonus (spec: `docs/specs/clean-floor-bonus.md`).
+  Rush (see the Rush section below), the clean floor bonus (spec: `docs/specs/clean-floor-bonus.md`), and
+  language support (English and pt-BR, `src/i18n/`).
 
 ## Commands
 
@@ -41,12 +42,18 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   The mood is a pure function of the scene (`moodFor`: hub, or run depth + low energy, or Rush) and changes crossfade.
   All music tuning lives in `CONFIG.music`. Audio "holds" (`Synth.hold('hidden' | 'ad')`) suspend the whole
   context, so a hidden tab or an ad pauses music and SFX together.
-- Sounds are generated with Web Audio, never loaded from files. Device prefs (mute) live in `SettingsStore`,
+- Sounds are generated with Web Audio, never loaded from files. Device prefs (mute, volumes, language) live in `SettingsStore`,
   separate from the profile, so "Reset progress" keeps them. Sound, like other juice, hangs off `RunEvent`s.
 - Ads must stay behind the `AdService` interface so the mock can be swapped for the CrazyGames/Poki SDK
   (only `createAdService()` changes). Game audio is paused while an ad plays (`Synth.paused`).
   Ad rules are pure and tested: `grantAdEnergy`/`canUseEnergyAd` (run.ts), `doubleRunGems`/`shouldShowInterstitial`
   (progression.ts). The interstitial shows after every 3rd completed run (`runsCompleted % N`), so no extra save state.
+- UI text is translated (English and pt-BR, `src/i18n/`). Never hardcode player-facing text: add a key to
+  `en.ts` and `pt-BR.ts` (the types force both) and use `t()` / `tn()`. Format numbers with `fmtNumber` / `fmtPct`
+  (pt-BR uses decimal commas). Perk, tool, upgrade and gem names live in the tables (via `ui/names.ts`), not in
+  game data. Static HTML texts use `data-i18n` / `data-i18n-aria`. The language is a device setting in
+  `SettingsStore`, picked in the ⚙️ dialog, and follows the browser by default. Mapping and conventions:
+  `docs/i18n/ui-texts.md`. In pt-BR "perk" is "bônus".
 - Feature flags live only in `src/flags.ts` (`DEFAULT_FLAGS`, overridable with `VITE_FLAGS` or dev-only `?flags=`).
   Check them with `isEnabled()` in UI/platform code, never in `src/game/` (keep logic flag-free and testable).
   When `ads` is off, `createAdService()` returns undefined and the UI shows no ad offers.
@@ -138,7 +145,9 @@ clear (a test checks it), or cleaning could pay for itself and runs would never 
 
 ## Testing gotchas
 
-- Dev builds expose `window.__deepDig` (`run` get/set, `tap(idx)`, `tool(toolId, idx)`, `hints()`) for scripted browser tests.
+- Dev builds expose `window.__deepDig` (`run` get/set, `tap(idx)`, `tool(toolId, idx)`, `tick(ms)`, `hints()`) for scripted browser tests.
+- The UI language follows the browser until one is picked, so a Playwright context with a Portuguese locale
+  sees pt-BR texts. Set `locale: 'en-US'` on the context when a test matches English text.
   It is not active in production builds.
 - For browser checks, Playwright lives in the session scratchpad, not in this project. Don't add it as a dependency.
 - Don't `pkill -f vite-node` or `pkill -f vite`: the pattern matches your own shell command and kills it.
@@ -149,3 +158,5 @@ clear (a test checks it), or cleaning could pay for itself and runs would never 
 
 - Match the existing code: small pure functions, JSDoc on non-obvious exports, no framework, plain DOM for
   screens, canvas for the grid. Tap targets ≥ 44px; animations < 300 ms.
+- Portuguese runs 20–30% longer than English: check new texts in both languages at 390 px width, especially
+  in tight spots (tool bar, canvas floats, banners, buttons).

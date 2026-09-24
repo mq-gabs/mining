@@ -1,4 +1,5 @@
 import { isEnabled } from '../flags';
+import { t } from '../i18n';
 
 /**
  * The only way the game talks to an ad network. To ship on CrazyGames or Poki, implement this with
@@ -18,11 +19,11 @@ export class MockAdService implements AdService {
   private busy = false;
 
   async showRewarded(): Promise<boolean> {
-    return this.play('Rewarded ad');
+    return this.play(t('mockAd.rewarded'));
   }
 
   async showInterstitial(): Promise<void> {
-    await this.play('Interstitial ad');
+    await this.play(t('mockAd.interstitial'));
   }
 
   /** Resolves false if another ad is already on screen. */
@@ -34,11 +35,11 @@ export class MockAdService implements AdService {
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-label', kind);
     overlay.innerHTML = `
-      <div class="ad-label">${kind} · mock</div>
+      <div class="ad-label">${t('mockAd.label', { kind })}</div>
       <div class="ad-card">
         <div class="ad-art">📺</div>
-        <strong>Your ad here</strong>
-        <span>Ends in <b class="ad-count">${Math.ceil(MOCK_AD_MS / 1000)}</b>s</span>
+        <strong>${t('mockAd.placeholder')}</strong>
+        <span>${t('mockAd.countdown', { n: `<b class="ad-count">${Math.ceil(MOCK_AD_MS / 1000)}</b>` })}</span>
       </div>
       <div class="ad-progress"><div class="ad-progress-fill" style="animation-duration:${MOCK_AD_MS}ms"></div></div>`;
     document.body.append(overlay);

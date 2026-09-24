@@ -11,27 +11,27 @@
     <div id="app">
       <section id="screen-hub" class="screen hub">
         <header class="hub-header">
-          <button class="icon-btn hub-settings" id="btn-settings" aria-label="Sound settings">⚙️</button>
+          <button class="icon-btn hub-settings" id="btn-settings" data-i18n-aria="a11y.settings" aria-label="Settings">⚙️</button>
           <button class="icon-btn mute-btn hub-mute" data-mute aria-label="Mute sound">🔊</button>
           <h1><span class="hub-icon">⛏️</span> Deep Dig</h1>
-          <p class="tagline">Dig down. Grab gems. Get out alive.</p>
+          <p class="tagline" data-i18n="hub.tagline">Dig down. Grab gems. Get out alive.</p>
         </header>
         <div class="hub-stats">
           <div class="stat">
-            <span class="stat-label">Gems</span>
+            <span class="stat-label" data-i18n="hub.gems">Gems</span>
             <span class="stat-value"><span class="gem-icon"></span><span id="hub-gems">0</span></span>
           </div>
           <div class="stat">
-            <span class="stat-label">Best floor</span>
+            <span class="stat-label" data-i18n="hub.bestFloor">Best floor</span>
             <span class="stat-value" id="hub-best">–</span>
           </div>
         </div>
         <div class="shop-wrap">
-          <h2 class="section-title">Upgrades</h2>
+          <h2 class="section-title" data-i18n="hub.upgrades">Upgrades</h2>
           <ul class="shop" id="shop"></ul>
-          <button id="btn-reset" class="btn-link">Reset progress</button>
+          <button id="btn-reset" class="btn-link" data-i18n="hub.reset">Reset progress</button>
         </div>
-        <button id="btn-start" class="btn primary big">Start Run</button>
+        <button id="btn-start" class="btn primary big" data-i18n="hub.start">Start Run</button>
       </section>
 
       <section id="screen-run" class="screen run" hidden>
@@ -39,10 +39,10 @@
           <div class="hud-row">
             <span class="hud-left">
               <span class="hud-depth" id="hud-depth">Floor 1</span>
-              <button class="clean-chip" id="clean-chip" aria-label="Clean floor bonus" hidden></button>
+              <button class="clean-chip" id="clean-chip" data-i18n-aria="a11y.cleanChip" aria-label="Clean floor bonus" hidden></button>
             </span>
             <span class="hud-right">
-              <button class="hud-gems" id="hud-gems" aria-label="Gems found this run"><span class="gem-icon"></span><span id="hud-gems-value">0</span><span class="gem-tiers" id="hud-gem-tiers"></span></button>
+              <button class="hud-gems" id="hud-gems" data-i18n-aria="a11y.runGems" aria-label="Gems found this run"><span class="gem-icon"></span><span id="hud-gems-value">0</span><span class="gem-tiers" id="hud-gem-tiers"></span></button>
               <button class="icon-btn mute-btn" data-mute aria-label="Mute sound">🔊</button>
             </span>
           </div>
@@ -50,10 +50,10 @@
             <div class="energy-fill" id="energy-fill"></div>
             <span class="energy-text" id="energy-text">⚡ 50 / 50</span>
           </div>
-          <div class="momentum" id="momentum" role="meter" aria-label="Rush meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="momentum" id="momentum" role="meter" data-i18n-aria="a11y.rushMeter" aria-label="Rush meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
             <div class="momentum-fill" id="momentum-fill"></div>
           </div>
-          <button class="perk-bar empty" id="perk-bar" aria-label="Active perks"></button>
+          <button class="perk-bar empty" id="perk-bar" data-i18n-aria="a11y.activePerks" aria-label="Active perks"></button>
         </header>
         <div class="grid-wrap" id="grid-wrap">
           <canvas id="grid"></canvas>
@@ -62,8 +62,8 @@
           <div class="floor-banner rush-banner" id="rush-banner" hidden></div>
         </div>
         <footer class="run-bar">
-          <div class="tool-bar" id="tool-bar" role="toolbar" aria-label="Tools"></div>
-          <button id="btn-leave" class="btn">Leave Mine</button>
+          <div class="tool-bar" id="tool-bar" role="toolbar" data-i18n-aria="a11y.tools" aria-label="Tools"></div>
+          <button id="btn-leave" class="btn" data-i18n="hud.leave">Leave Mine</button>
         </footer>
       </section>
 

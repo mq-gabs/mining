@@ -8,33 +8,38 @@ import {
   type Profile,
 } from '../game/progression';
 import type { RunModifiers } from '../game/types';
-import { TOOL_META } from './tools';
+import { fmtNumber, fmtPct, t, tn } from '../i18n';
+import { toolDescription, upgradeName } from './names';
 
-const pct = (n: number) => `${Math.round(n * 100)}%`;
-
-/** "current → next" description of what an upgrade level changes. */
-const EFFECT_TEXT: Record<UpgradeId, (m: RunModifiers) => string> = {
-  power: (m) => `Power ${m.power}`,
-  energy: (m) => `Max energy ${m.maxEnergy}`,
-  luck: (m) => `Gem chance +${pct(m.gemChanceBonus)}`,
-  gemValue: (m) => `Gem value ×${m.gemValueMult.toFixed(1)}`,
-  dynamite: (m) => `Charges ${m.toolCharges.dynamite}`,
-  drillUnlock: () => '',
-  drill: (m) => `Charges ${m.toolCharges.drill}`,
-  scannerUnlock: () => '',
-  scanner: (m) => `Charges ${m.toolCharges.scanner}`,
+/**
+ * What an upgrade level gives, as `[text, value]`: the shop shows "text → next value", so only the value is
+ * repeated after the arrow (e.g. "Power 2 → 3").
+ */
+const EFFECT: Record<UpgradeId, (m: RunModifiers) => [string, string]> = {
+  power: (m) => [t('shop.effect.power', { n: m.power }), String(m.power)],
+  energy: (m) => [t('shop.effect.energy', { n: m.maxEnergy }), String(m.maxEnergy)],
+  luck: (m) => [t('shop.effect.luck', { pct: fmtPct(m.gemChanceBonus) }), `+${fmtPct(m.gemChanceBonus)}`],
+  gemValue: (m) => {
+    const mult = fmtNumber(m.gemValueMult, 1, 1);
+    return [t('shop.effect.gemValue', { mult }), `×${mult}`];
+  },
+  dynamite: (m) => [t('shop.effect.charges', { n: m.toolCharges.dynamite }), String(m.toolCharges.dynamite)],
+  drillUnlock: () => ['', ''],
+  drill: (m) => [t('shop.effect.charges', { n: m.toolCharges.drill }), String(m.toolCharges.drill)],
+  scannerUnlock: () => ['', ''],
+  scanner: (m) => [t('shop.effect.charges', { n: m.toolCharges.scanner }), String(m.toolCharges.scanner)],
 };
 
 function effectLine(profile: Profile, id: UpgradeId, maxed: boolean): string {
   const unlocks = upgradeDef(id).unlocks;
   if (unlocks) {
     const n = CONFIG.tools[unlocks].baseCharges;
-    return `${TOOL_META[unlocks].description} ${n} charge${n === 1 ? '' : 's'} per run.`;
+    return `${toolDescription(unlocks)} ${tn('shop.unlock.charges', n)}`;
   }
-  const now = EFFECT_TEXT[id](modifiersFromProfile(profile));
+  const [now] = EFFECT[id](modifiersFromProfile(profile));
   if (maxed) return now;
   const next = { ...profile, upgrades: { ...profile.upgrades, [id]: profile.upgrades[id] + 1 } };
-  const after = EFFECT_TEXT[id](modifiersFromProfile(next)).replace(/^[^\d+×]*/, '');
+  const [, after] = EFFECT[id](modifiersFromProfile(next));
   return `${now} → ${after}`;
 }
 
@@ -60,7 +65,7 @@ export function renderShop(
       li.innerHTML = `
         <div class="shop-icon">${item.icon}</div>
         <div class="shop-info">
-          <div><span class="shop-name">${item.name}</span>${item.maxLevel > 1 ? `<span class="shop-level">Lv ${level}/${item.maxLevel}</span>` : ''}</div>
+          <div><span class="shop-name">${upgradeName(id)}</span>${item.maxLevel > 1 ? `<span class="shop-level">${t('shop.level', { level, max: item.maxLevel })}</span>` : ''}</div>
           <div class="shop-effect">${effectLine(profile, id, maxed)}</div>
           ${item.maxLevel > 1 ? `<div class="pips">${'<span class="pip on"></span>'.repeat(level)}${'<span class="pip"></span>'.repeat(item.maxLevel - level)}</div>` : ''}
         </div>`;
@@ -68,12 +73,12 @@ export function renderShop(
       const btn = document.createElement('button');
       btn.className = `btn primary buy-btn${maxed ? ' maxed' : ''}`;
       if (maxed) {
-        btn.textContent = 'MAX';
+        btn.textContent = t('shop.max');
         btn.disabled = true;
       } else {
         btn.innerHTML = `<span class="gem-icon"></span>${cost}`;
         btn.disabled = !canBuyUpgrade(profile, id);
-        btn.setAttribute('aria-label', `Buy ${item.name} for ${cost} gems`);
+        btn.setAttribute('aria-label', t('a11y.buy', { name: upgradeName(id), cost }));
         btn.addEventListener('click', () => onBuy(id));
       }
       li.append(btn);

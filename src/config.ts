@@ -14,8 +14,8 @@ export type UpgradeId =
   | 'scannerUnlock'
   | 'scanner';
 
+/** An upgrade's display name is in the translation tables (`upgrade.<id>`). */
 export interface UpgradeDef {
-  name: string;
   icon: string;
   baseCost: number;
   maxLevel: number;
@@ -270,15 +270,15 @@ export const CONFIG = {
   upgrades: {
     costGrowth: 1.6,
     items: {
-      power: { name: 'Pickaxe Power', icon: '⛏️', baseCost: 20, maxLevel: 10, perLevel: 1 },
-      energy: { name: 'Max Energy', icon: '⚡', baseCost: 15, maxLevel: 15, perLevel: 10 },
-      luck: { name: 'Luck', icon: '🍀', baseCost: 30, maxLevel: 10, perLevel: 0.05 },
-      gemValue: { name: 'Gem Value', icon: '💎', baseCost: 40, maxLevel: 10, perLevel: 0.1 },
-      dynamite: { name: 'Dynamite Charges', icon: '🧨', baseCost: 50, maxLevel: 5, perLevel: 1 },
-      drillUnlock: { name: 'Unlock Drill', icon: '🔩', baseCost: 150, maxLevel: 1, perLevel: 1, unlocks: 'drill' },
-      drill: { name: 'Drill Charges', icon: '🔩', baseCost: 60, maxLevel: 5, perLevel: 1, requires: 'drillUnlock' },
-      scannerUnlock: { name: 'Unlock Scanner', icon: '📡', baseCost: 250, maxLevel: 1, perLevel: 1, unlocks: 'scanner' },
-      scanner: { name: 'Scanner Charges', icon: '📡', baseCost: 60, maxLevel: 5, perLevel: 1, requires: 'scannerUnlock' },
+      power: { icon: '⛏️', baseCost: 20, maxLevel: 10, perLevel: 1 },
+      energy: { icon: '⚡', baseCost: 15, maxLevel: 15, perLevel: 10 },
+      luck: { icon: '🍀', baseCost: 30, maxLevel: 10, perLevel: 0.05 },
+      gemValue: { icon: '💎', baseCost: 40, maxLevel: 10, perLevel: 0.1 },
+      dynamite: { icon: '🧨', baseCost: 50, maxLevel: 5, perLevel: 1 },
+      drillUnlock: { icon: '🔩', baseCost: 150, maxLevel: 1, perLevel: 1, unlocks: 'drill' },
+      drill: { icon: '🔩', baseCost: 60, maxLevel: 5, perLevel: 1, requires: 'drillUnlock' },
+      scannerUnlock: { icon: '📡', baseCost: 250, maxLevel: 1, perLevel: 1, unlocks: 'scanner' },
+      scanner: { icon: '📡', baseCost: 60, maxLevel: 5, perLevel: 1, requires: 'scannerUnlock' },
     } satisfies Record<UpgradeId, UpgradeDef>,
   },
 } as const;

@@ -3,6 +3,7 @@ import { toColRow } from '../game/grid';
 import { Rng } from '../game/rng';
 import { GEM_TIERS, type GemTier } from '../config';
 import type { Cell, Floor, RunEvent } from '../game/types';
+import { t, tn } from '../i18n';
 import {
   BACKDROP_COLOR,
   BLAST_COLOR,
@@ -211,7 +212,7 @@ export class GridRenderer {
           break;
         }
         case 'freeSwing':
-          this.float(floor, e.idx, 'free!', CRYSTAL_COLOR, now, 14);
+          this.float(floor, e.idx, t('float.freeSwing'), CRYSTAL_COLOR, now, 14);
           break;
         case 'gem': {
           const rank = GEM_TIERS.indexOf(e.tier);
@@ -240,19 +241,19 @@ export class GridRenderer {
           if (e.source === 'chest') {
             const idx = events.find((x) => x.type === 'break')?.idx;
             if (idx !== undefined) {
-              this.float(floor, idx, 'Perk!', TREASURE_COLOR, now, 22);
+              this.float(floor, idx, t('float.perk'), TREASURE_COLOR, now, 22);
               this.ring(floor, idx, TREASURE_COLOR, now, 1);
             }
           }
           break;
         case 'gas':
           this.puff(floor, e.idx, e.masked ? 'rgba(140,200,120,0.3)' : 'rgba(120,220,90,0.6)', now, 1.6);
-          if (e.masked) this.float(floor, e.idx, 'masked', GAS_COLOR, now);
+          if (e.masked) this.float(floor, e.idx, t('float.masked'), GAS_COLOR, now);
           else this.float(floor, e.idx, `−${e.energyLost}⚡`, DAMAGE_COLOR, now);
           break;
         case 'caveIn':
           this.shake(now, 6);
-          this.float(floor, e.idx, 'Cave-in!', '#e8c9a0', now, 16);
+          this.float(floor, e.idx, t('float.caveIn'), '#e8c9a0', now, 16);
           for (const n of e.filled) {
             this.burst(floor, n, BLOCK_COLORS.dirt.top, now, { count: 6, speed: 60, size: 4, duration: 260, gravity: 900 });
           }
@@ -292,7 +293,8 @@ export class GridRenderer {
           // Centred on the grid, and it stays longer than a cell float so the result can be read.
           const x = this.originX + (this.cellSize * floor.cols) / 2;
           const y = this.originY + (this.cellSize * floor.rows) / 2;
-          const text = `Rush! ${e.blocks} block${e.blocks === 1 ? '' : 's'} · +${e.gems} 💎${e.energy ? ` · +${e.energy}⚡` : ''}`;
+          const energy = e.energy ? t('banner.cleared.energy', { energy: e.energy }) : '';
+          const text = tn('float.rushEnd', e.blocks, { gems: e.gems }) + energy;
           this.floats.push({ x, y, text, color: RUSH_COLOR, start: now, duration: RUSH_RESULT_MS, size: 22 });
           break;
         }

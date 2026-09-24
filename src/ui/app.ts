@@ -33,7 +33,9 @@ import { renderShop } from './shop';
 import { MusicEngine } from './music';
 import { Sounds } from './sounds';
 import { GEM_COLORS, gemIconSvg, TREASURE_COLOR } from './theme';
-import { TOOL_META } from './tools';
+import { TOOL_ICONS } from './tools';
+import { gemName, perkDescription, perkName, toolDescription, toolName } from './names';
+import { detectLocale, fmtNumber, fmtPct, LOCALES, setLocale, t, type Locale, type MessageKey } from '../i18n';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -85,6 +87,7 @@ export class App {
       if (btn && !btn.matches('.buy-btn, .perk-confirm')) this.sounds.click();
     });
     this.applySoundSettings();
+    this.applyLocale();
     this.renderMute();
     // Try to start the menu music right away. Browsers only allow this when autoplay is permitted
     // (e.g. the player has used the site before); otherwise it starts on the first tap or key press.
@@ -137,8 +140,33 @@ export class App {
     this.sounds.click();
   }
 
+  /** The chosen language, or the browser's when none was chosen. Retranslates the static page texts. */
+  private applyLocale() {
+    const locale = this.soundSettings.language ?? detectLocale(navigator.languages ?? [navigator.language]);
+    setLocale(locale);
+    document.documentElement.lang = locale;
+    for (const el of document.querySelectorAll<HTMLElement>('[data-i18n]')) el.textContent = t(el.dataset.i18n as MessageKey);
+    for (const el of document.querySelectorAll<HTMLElement>('[data-i18n-aria]')) {
+      el.setAttribute('aria-label', t(el.dataset.i18nAria as MessageKey));
+    }
+  }
+
+  /** Switches the language and redraws whatever is on screen (the Settings dialog stays open). */
+  private changeLanguage(language: Locale) {
+    this.updateSoundSettings({ language });
+    this.applyLocale();
+    this.renderMute();
+    if (this.run) this.updateHud();
+    else this.renderHub();
+    this.showSettings();
+  }
+
   private showSettings() {
     const s = this.soundSettings;
+    const current = s.language ?? detectLocale(navigator.languages ?? [navigator.language]);
+    const options = LOCALES.map(
+      (l) => `<option value="${l.id}"${l.id === current ? ' selected' : ''}>${l.name}</option>`,
+    ).join('');
     const slider = (id: string, label: string, value: number) => `
       <label class="slider-row" for="${id}">
         <span>${label}</span>
@@ -146,14 +174,21 @@ export class App {
         <output id="${id}-out">${Math.round(value * 100)}%</output>
       </label>`;
     showModal(
-      `<h2>Sound</h2>
+      `<h2>${t('settings.title')}</h2>
        <div class="sliders">
-         ${slider('vol-music', '🎵 Music', s.musicVolume)}
-         ${slider('vol-sfx', '🔔 Effects', s.sfxVolume)}
+         ${slider('vol-music', t('sound.music'), s.musicVolume)}
+         ${slider('vol-sfx', t('sound.effects'), s.sfxVolume)}
+         <label class="slider-row" for="language">
+           <span>${t('settings.language')}</span>
+           <select id="language" class="lang-select">${options}</select>
+         </label>
        </div>
-       ${s.muted ? '<p class="muted-note">Sound is muted. Unmute with 🔇 to hear changes.</p>' : ''}`,
-      [{ label: 'Done', primary: true, onClick: () => {} }],
+       ${s.muted ? `<p class="muted-note">${t('sound.mutedNote')}</p>` : ''}`,
+      [{ label: t('common.done'), primary: true, onClick: () => {} }],
     );
+    $<HTMLSelectElement>('language').addEventListener('change', (e) => {
+      this.changeLanguage((e.target as HTMLSelectElement).value as Locale);
+    });
     const bind = (id: string, key: 'musicVolume' | 'sfxVolume') => {
       const input = $<HTMLInputElement>(id);
       input.addEventListener('input', () => {
@@ -171,7 +206,7 @@ export class App {
     const muted = this.soundSettings.muted;
     for (const btn of document.querySelectorAll<HTMLElement>('[data-mute]')) {
       btn.textContent = muted ? '🔇' : '🔊';
-      btn.setAttribute('aria-label', muted ? 'Unmute sound' : 'Mute sound');
+      btn.setAttribute('aria-label', t(muted ? 'a11y.unmute' : 'a11y.mute'));
       btn.setAttribute('aria-pressed', String(muted));
     }
   }
@@ -206,16 +241,16 @@ export class App {
   }
 
   private confirmReset() {
-    showModal(`<h2>Reset progress?</h2><p>This erases all gems, upgrades and your best depth. It can't be undone.</p>`, [
+    showModal(`<h2>${t('reset.title')}</h2><p>${t('reset.body')}</p>`, [
       {
-        label: 'Reset everything',
+        label: t('reset.confirm'),
         className: 'danger',
         onClick: () => {
           this.profile = this.store.reset();
           this.renderHub();
         },
       },
-      { label: 'Cancel', onClick: () => {} },
+      { label: t('common.cancel'), onClick: () => {} },
     ]);
   }
 
@@ -234,7 +269,7 @@ export class App {
     this.setRun(createRun(seed, modifiersFromProfile(this.profile)));
     this.lastFrame = performance.now();
     this.loop(this.lastFrame);
-    showBanner($('floor-banner'), 'Floor 1');
+    showBanner($('floor-banner'), t('banner.floor', { n: 1 }));
   }
 
   private loop = (now: number) => {
@@ -306,14 +341,19 @@ export class App {
       }
       if (e.type === 'descend') {
         $('floor-banner').classList.remove('long');
-        showBanner($('floor-banner'), `Floor ${e.depth}`);
+        showBanner($('floor-banner'), t('banner.floor', { n: e.depth }));
       }
-      if (e.type === 'rushStart') showBanner($('rush-banner'), 'RUSH!');
+      if (e.type === 'rushStart') showBanner($('rush-banner'), t('banner.rush'));
       if (e.type === 'floorCleared') {
         const capped = e.multiplier >= CONFIG.cleanBonus.maxMult;
         $('floor-banner').classList.add('long');
-        const energy = e.energy ? ` · +${e.energy}⚡` : e.energyPending ? ` · +${e.energyPending}⚡ after Rush` : '';
-        showBanner($('floor-banner'), `Floor cleared! +${pct(e.bonus)} · ×${fmtMult(e.multiplier)}${capped ? ' (max)' : ''}${energy}`);
+        const energy = e.energy
+          ? t('banner.cleared.energy', { energy: e.energy })
+          : e.energyPending
+            ? t('banner.cleared.energyAfterRush', { energy: e.energyPending })
+            : '';
+        const text = t('banner.cleared', { pct: fmtPct(e.bonus), mult: fmtMult(e.multiplier) });
+        showBanner($('floor-banner'), text + (capped ? t('banner.cleared.max') : '') + energy);
         replayClass($('clean-chip'), 'bump');
       }
     }
@@ -374,7 +414,7 @@ export class App {
     const run = this.run;
     if (!run || run.status !== 'choosingPerk' || !run.perkOffer) return;
     const { source, choices } = run.perkOffer;
-    const subtitle = source === 'chest' ? 'You found a relic in the chest.' : `You reached floor ${run.depth}.`;
+    const subtitle = source === 'chest' ? t('perk.pick.fromChest') : t('perk.pick.fromFloor', { n: run.depth });
     if (source === 'floor') this.sounds.perkOffer();
     this.music.perkChord();
     // Select, then confirm: a player tapping fast can break a perk chest, and a one-tap pick would choose
@@ -382,16 +422,16 @@ export class App {
     const cards = choices
       .map(
         (id) => `<button class="btn perk-card" data-perk="${id}" aria-pressed="false">
-          ${perkCardHtml(id, run.perks[id] ? `(have ${run.perks[id]})` : '')}</button>`,
+          ${perkCardHtml(id, run.perks[id] ? t('perk.pick.have', { n: run.perks[id]! }) : '')}</button>`,
       )
       .join('');
     let selected: PerkId | undefined;
     showModal(
-      `<h2>Choose a perk</h2><p>${subtitle} Perks last until the end of this run.</p>
-       <div class="perk-choices" role="group" aria-label="Perks">${cards}</div>`,
+      `<h2>${t('perk.pick.title')}</h2><p>${subtitle} ${t('perk.pick.lasts')}</p>
+       <div class="perk-choices" role="group" aria-label="${t('a11y.perkChoices')}">${cards}</div>`,
       [
         {
-          label: 'Take perk',
+          label: t('perk.pick.take'),
           primary: true,
           className: 'perk-confirm',
           id: 'perk-confirm',
@@ -408,7 +448,7 @@ export class App {
         }
         const confirm = $<HTMLButtonElement>('perk-confirm');
         confirm.disabled = false;
-        confirm.textContent = `Take ${PERKS[selected].name}`;
+        confirm.textContent = t('perk.pick.takeNamed', { name: perkName(selected) });
       });
     }
   }
@@ -421,9 +461,9 @@ export class App {
       ? owned
           .map((id) => `<div class="perk-row">${perkCardHtml(id, run.perks[id]! > 1 ? `×${run.perks[id]}` : '')}</div>`)
           .join('')
-      : `<p>No perks yet. You get to pick one every ${CONFIG.perks.offerEveryFloors} floors, and some chests hold one.</p>`;
-    showModal(`<h2>Active perks</h2><div class="perk-list">${list}</div>`, [
-      { label: 'Back to digging', primary: true, onClick: () => {} },
+      : `<p>${t('perk.active.none', { n: CONFIG.perks.offerEveryFloors })}</p>`;
+    showModal(`<h2>${t('perk.active.title')}</h2><div class="perk-list">${list}</div>`, [
+      { label: t('common.backToDigging'), primary: true, onClick: () => {} },
     ]);
   }
 
@@ -432,23 +472,25 @@ export class App {
     const run = this.run;
     if (!run || run.status !== 'playing' || isModalOpen()) return;
     const counts = run.stats.gemsByTier;
-    const found = GEM_TIERS.filter((t) => counts[t]);
+    const found = GEM_TIERS.filter((tier) => counts[tier]);
     const rows = found
-      .map((t) => {
-        const each = gemValue(t, run.mods.gemValueMult);
+      .map((tier) => {
+        const each = gemValue(tier, run.mods.gemValueMult);
         return `<div class="gem-row">
-          ${gemIconSvg(t, 30)}
-          <span class="gem-name">${t[0].toUpperCase() + t.slice(1)}</span>
-          <span class="gem-math">${counts[t]} × ${each}</span>
-          <strong>= ${counts[t]! * each}</strong>
+          ${gemIconSvg(tier, 30)}
+          <span class="gem-name">${gemName(tier)}</span>
+          <span class="gem-math">${counts[tier]} × ${each}</span>
+          <strong>= ${counts[tier]! * each}</strong>
         </div>`;
       })
       .join('');
     const body = found.length
       ? `<div class="gem-list">${rows}</div>
-         <div class="summary-row highlight"><span>Total</span><strong>${run.gems}</strong></div>`
-      : '<p>No gems yet. Blocks next to a gem sparkle.</p>';
-    showModal(`<h2>Gems this run</h2>${body}`, [{ label: 'Back to digging', primary: true, onClick: () => {} }]);
+         <div class="summary-row highlight"><span>${t('gems.total')}</span><strong>${run.gems}</strong></div>`
+      : `<p>${t('gems.none')}</p>`;
+    showModal(`<h2>${t('gems.title')}</h2>${body}`, [
+      { label: t('common.backToDigging'), primary: true, onClick: () => {} },
+    ]);
   }
 
   private renderPerkBar(run: RunState) {
@@ -459,10 +501,10 @@ export class App {
       ? owned
           .map((id) => {
             const n = run.perks[id]!;
-            return `<span class="perk-chip" title="${PERKS[id].name}">${PERKS[id].icon}${n > 1 ? `<small>×${n}</small>` : ''}</span>`;
+            return `<span class="perk-chip" title="${perkName(id)}">${PERKS[id].icon}${n > 1 ? `<small>×${n}</small>` : ''}</span>`;
           })
           .join('')
-      : '<span class="perk-empty">Perks: none yet</span>';
+      : `<span class="perk-empty">${t('hud.perksEmpty')}</span>`;
   }
 
   // ---------- HUD ----------
@@ -470,7 +512,7 @@ export class App {
   private updateHud() {
     const run = this.run;
     if (!run) return;
-    $('hud-depth').textContent = `Floor ${run.depth}`;
+    $('hud-depth').textContent = t('hud.floor', { n: run.depth });
     const chip = $('clean-chip');
     chip.hidden = run.cleanFloors === 0;
     chip.textContent = `🧹 ×${fmtMult(runMultiplier(run))}`;
@@ -498,23 +540,25 @@ export class App {
 
   private renderToolBar(run: RunState) {
     const pick = `<button class="tool${this.armed ? '' : ' armed'}" data-tool="pickaxe" aria-pressed="${!this.armed}">
-        <span class="tool-icon">⛏️</span><span class="tool-name">Pickaxe</span><span class="tool-count">∞</span></button>`;
+        <span class="tool-icon">⛏️</span><span class="tool-name">${toolName('pickaxe')}</span><span class="tool-count">∞</span></button>`;
     const tools = TOOL_IDS.map((id) => {
-      const meta = TOOL_META[id];
+      const name = toolName(id);
       const locked = run.mods.toolCharges[id] === 0;
       const left = run.tools[id];
       const armed = this.armed === id;
       const count = locked ? '🔒' : String(left);
-      const title = locked ? `${meta.name}: unlock it in the shop` : `${meta.name}: ${meta.description}`;
+      const title = locked ? t('tool.locked', { tool: name }) : `${name}: ${toolDescription(id)}`;
       return `<button class="tool${armed ? ' armed' : ''}${locked ? ' locked' : ''}" data-tool="${id}"
           aria-pressed="${armed}" title="${title}" ${locked || left === 0 ? 'disabled' : ''}>
-        <span class="tool-icon">${meta.icon}</span><span class="tool-name">${meta.name}</span><span class="tool-count">${count}</span></button>`;
+        <span class="tool-icon">${TOOL_ICONS[id]}</span><span class="tool-name">${name}</span><span class="tool-count">${count}</span></button>`;
     });
     $('tool-bar').innerHTML = pick + tools.join('');
     $('grid-wrap').classList.toggle('armed', !!this.armed);
     const hint = $('aim-hint');
     hint.hidden = !this.armed;
-    if (this.armed) hint.textContent = `${TOOL_META[this.armed].icon} Tap a block: ${TOOL_META[this.armed].description}`;
+    if (this.armed) {
+      hint.textContent = t('tool.aim', { icon: TOOL_ICONS[this.armed], description: toolDescription(this.armed) });
+    }
   }
 
   /** Explains the clean floor bonus and shows this run's progress. */
@@ -523,16 +567,19 @@ export class App {
     if (!run || run.status !== 'playing' || isModalOpen()) return;
     const c = CONFIG.cleanBonus;
     showModal(
-      `<h2>🧹 Clean floor bonus</h2>
-       <p>Break every block on a floor to raise your gem multiplier. Deeper floors are worth more:
-       floor 1 adds +${pct(bonusForDepth(1))}, floor 10 adds +${pct(bonusForDepth(10))}. It applies to the gems you
-       bring back, up to ×${fmtMult(c.maxMult)}. Each cleared floor also gives back energy: +${clearEnergyForDepth(1)}⚡ on
-       floor 1, +${clearEnergyForDepth(10)}⚡ on floor 10.</p>
+      `<h2>${t('clean.title')}</h2>
+       <p>${t('clean.body', {
+         pct1: fmtPct(bonusForDepth(1)),
+         pct10: fmtPct(bonusForDepth(10)),
+         max: fmtMult(c.maxMult),
+         energy1: clearEnergyForDepth(1),
+         energy10: clearEnergyForDepth(10),
+       })}</p>
        <div class="summary-rows">
-         <div class="summary-row"><span>Floors cleaned</span><strong>${run.cleanFloors}</strong></div>
-         <div class="summary-row highlight"><span>Multiplier</span><strong>×${fmtMult(runMultiplier(run))}</strong></div>
+         <div class="summary-row"><span>${t('clean.floors')}</span><strong>${run.cleanFloors}</strong></div>
+         <div class="summary-row highlight"><span>${t('clean.multiplier')}</span><strong>×${fmtMult(runMultiplier(run))}</strong></div>
        </div>`,
-      [{ label: 'Back to digging', primary: true, onClick: () => {} }],
+      [{ label: t('common.backToDigging'), primary: true, onClick: () => {} }],
     );
   }
 
@@ -541,12 +588,13 @@ export class App {
   private confirmLeave() {
     if (!this.run || this.run.status !== 'playing' || isModalOpen()) return;
     const mult = runMultiplier(this.run);
-    const bonus = mult > 1 ? ` (${this.run.gems} × ${fmtMult(mult)} clean floor bonus)` : '';
+    const bonus = mult > 1 ? t('leave.bonus', { gems: this.run.gems, mult: fmtMult(mult) }) : '';
+    const kept = `<strong>${gemsKept(this.run.gems, 'left', mult)}</strong>`;
     showModal(
-      `<h2>Leave the mine?</h2><p>You'll return to the surface and keep <strong>${gemsKept(this.run.gems, 'left', mult)}</strong> gems from this run${bonus}.</p>`,
+      `<h2>${t('leave.title')}</h2><p>${t('leave.body', { kept, bonus })}</p>`,
       [
-        { label: 'Leave Mine', primary: true, onClick: () => this.finishRun('left') },
-        { label: 'Keep digging', onClick: () => {} },
+        { label: t('leave.confirm'), primary: true, onClick: () => this.finishRun('left') },
+        { label: t('leave.cancel'), onClick: () => {} },
       ],
     );
   }
@@ -557,21 +605,25 @@ export class App {
     const mult = runMultiplier(run);
     const kept = gemsKept(run.gems, 'exhausted', mult);
     const keepPct = Math.round(CONFIG.run.exhaustedKeepRatio * 100);
-    const bonus = mult > 1 ? `, after the ×${fmtMult(mult)} clean floor bonus` : '';
+    const bonus = mult > 1 ? t('oom.bonus', { mult: fmtMult(mult) }) : '';
     const offer = !!this.ads && canUseEnergyAd(run);
     const actions: ModalAction[] = [];
     if (offer) {
       actions.push({
-        html: `📺 Watch an ad for +${CONFIG.ads.rewardedEnergy} energy`,
+        html: t('ad.energy', { n: CONFIG.ads.rewardedEnergy }),
         primary: true,
         onClick: () => void this.watchEnergyAd(),
       });
     }
-    actions.push({ label: offer ? 'Get carried out' : 'Continue', primary: !offer, onClick: () => this.finishRun('exhausted') });
+    actions.push({
+      label: t(offer ? 'oom.carriedOut' : 'common.continue'),
+      primary: !offer,
+      onClick: () => this.finishRun('exhausted'),
+    });
     showModal(
-      `<h2>Out of energy!</h2>
-       ${adFailed ? '<p class="ad-error">The ad couldn\'t play. You can try again.</p>' : ''}
-       <p>You collapse and get carried out. You keep ${keepPct}% of your gems${bonus}: <strong>${kept}</strong> (found ${run.gems}).</p>`,
+      `<h2>${t('oom.title')}</h2>
+       ${adFailed ? `<p class="ad-error">${t('ad.failedRetry')}</p>` : ''}
+       <p>${t('oom.body', { pct: keepPct, bonus, kept: `<strong>${kept}</strong>`, gems: run.gems })}</p>`,
       actions,
     );
   }
@@ -636,26 +688,26 @@ export class App {
     if (this.ads && s.gemsKept > 0 && !s.gemsDoubled) {
       const bonus = s.gemsKept * (CONFIG.ads.gemMultiplier - 1);
       actions.push({
-        html: `📺 Double gems from this run <span class="ad-bonus">+${bonus}</span>`,
+        html: t('ad.double', { bonus: `<span class="ad-bonus">+${bonus}</span>` }),
         className: 'ad-btn',
         onClick: () => void this.watchDoubleAd(s, newBest),
       });
     }
-    actions.push({ label: 'Continue', primary: true, onClick: () => void this.leaveSummary() });
-    const title = s.reason === 'left' ? 'Back on the surface' : 'Carried out';
+    actions.push({ label: t('common.continue'), primary: true, onClick: () => void this.leaveSummary() });
+    const title = t(s.reason === 'left' ? 'summary.titleLeft' : 'summary.titleExhausted');
     showModal(
-      `${newBest ? '<div class="badge">New best depth!</div>' : ''}
+      `${newBest ? `<div class="badge">${t('summary.newBest')}</div>` : ''}
        <h2>${title}</h2>
        <div class="summary-rows">
-         <div class="summary-row"><span>Depth reached</span><strong>Floor ${s.depth}</strong></div>
-         <div class="summary-row"><span>Blocks broken</span><strong>${s.blocksBroken}</strong></div>
-         <div class="summary-row"><span>Gems found</span><strong>${s.gemsFound}</strong></div>
+         <div class="summary-row"><span>${t('summary.depth')}</span><strong>${t('summary.depthValue', { n: s.depth })}</strong></div>
+         <div class="summary-row"><span>${t('summary.blocks')}</span><strong>${s.blocksBroken}</strong></div>
+         <div class="summary-row"><span>${t('summary.gemsFound')}</span><strong>${s.gemsFound}</strong></div>
          ${Object.keys(s.gemsByTier).length ? `<div class="summary-row gem-tiers-row">${gemTiersHtml(s.gemsByTier)}</div>` : ''}
-         ${s.cleanFloors ? `<div class="summary-row"><span>🧹 Clean floors ${s.cleanFloors} · ×${fmtMult(s.multiplier)}</span><strong>+${s.bonusGems}</strong></div>` : ''}
-         <div class="summary-row highlight${s.gemsDoubled ? ' doubled' : ''}"><span>Gems kept${s.gemsDoubled ? ` <em>×${CONFIG.ads.gemMultiplier}</em>` : ''}</span><strong>${s.gemsKept}</strong></div>
+         ${s.cleanFloors ? `<div class="summary-row"><span>${t('summary.clean', { n: s.cleanFloors, mult: fmtMult(s.multiplier) })}</span><strong>+${s.bonusGems}</strong></div>` : ''}
+         <div class="summary-row highlight${s.gemsDoubled ? ' doubled' : ''}"><span>${t('summary.gemsKept')}${s.gemsDoubled ? ` <em>×${CONFIG.ads.gemMultiplier}</em>` : ''}</span><strong>${s.gemsKept}</strong></div>
        </div>
-       ${opts.adFailed ? '<p class="ad-error">The ad couldn\'t play.</p>' : ''}
-       <div class="seed">seed ${s.seed}</div>`,
+       ${opts.adFailed ? `<p class="ad-error">${t('ad.failed')}</p>` : ''}
+       <div class="seed">${t('summary.seed', { n: s.seed })}</div>`,
       actions,
     );
   }
@@ -663,27 +715,21 @@ export class App {
 
 /** Per-tier gem counts (icon + count), lowest tier first. Tiers not found yet are left out. */
 function gemTiersHtml(counts: RunSummary['gemsByTier']): string {
-  return GEM_TIERS.filter((t) => counts[t])
-    .map((t) => `<span class="gem-tier">${gemIconSvg(t)}${counts[t]}</span>`)
+  return GEM_TIERS.filter((tier) => counts[tier])
+    .map((tier) => `<span class="gem-tier">${gemIconSvg(tier)}${counts[tier]}</span>`)
     .join('');
 }
 
 /** A perk's icon, name and description, with an optional stack note after the name. */
 function perkCardHtml(id: PerkId, stackNote: string): string {
-  const p = PERKS[id];
   const stack = stackNote ? ` <span class="perk-stack">${stackNote}</span>` : '';
-  return `<span class="perk-icon">${p.icon}</span>
-    <span class="perk-text"><strong>${p.name}${stack}</strong><span>${p.description}</span></span>`;
+  return `<span class="perk-icon">${PERKS[id].icon}</span>
+    <span class="perk-text"><strong>${perkName(id)}${stack}</strong><span>${perkDescription(id)}</span></span>`;
 }
 
-/** A share as a whole percent, e.g. 0.06 -> "6%". */
-function pct(n: number): string {
-  return `${Math.round(n * 100)}%`;
-}
-
-/** A multiplier with up to two decimals, e.g. 1.12, 1.5. */
+/** A multiplier with up to two decimals in the current language, e.g. 1.12 (en) or 1,12 (pt-BR). */
 function fmtMult(m: number): string {
-  return String(Math.round(m * 100) / 100);
+  return fmtNumber(m, 2);
 }
 
 function parseSeedParam(): number | undefined {
