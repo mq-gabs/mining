@@ -113,6 +113,13 @@ export class Sounds {
     this.synth.tone({ freq: 70, to: 30, dur: 0.45, vol: 0.5 });
   }
 
+  /** A hole took gems: a falling whoop, then coins clinking down (no clink when nothing was lost). */
+  hole(gemsLost: number) {
+    this.synth.tone({ freq: 520, to: 90, dur: 0.35, type: 'triangle', vol: 0.2 });
+    if (gemsLost === 0) return;
+    [1760, 1480, 1245].forEach((freq, i) => this.synth.tone({ freq, dur: 0.12, type: 'triangle', vol: 0.07, delay: 0.22 + i * 0.07 }));
+  }
+
   stairs() {
     this.synth.tone({ freq: 220, to: 660, dur: 0.3, type: 'triangle', vol: 0.2 });
     arpeggio(this.synth, [784, 1047, 1568], 0.08, 'sine', 0.12, 0.35);
@@ -249,6 +256,9 @@ export class Sounds {
           break;
         case 'caveIn':
           this.caveIn();
+          break;
+        case 'hole':
+          this.hole(e.gemsLost);
           break;
         case 'stairsRevealed':
           this.stairs();

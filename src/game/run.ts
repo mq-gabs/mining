@@ -86,6 +86,13 @@ export function tapCell(prev: RunState, idx: number): ActionResult {
   if (target.open && target.content.kind === 'stairs') return descend(prev);
   // Tapping a revealed item picks it up (free, normal rules even during a Rush).
   if (target.open && isCollectible(target.content)) return collect(prev, idx);
+  // Tapping a hole takes gems again (free). Holes do nothing during a Rush.
+  if (target.open && target.content.kind === 'hole') {
+    if (prev.rush) return { run: prev, events: [] };
+    const ctx = begin(prev);
+    fallIntoHole(ctx, idx);
+    return finish(ctx);
+  }
   // During a Rush any block can be mined, not just the ones next to an open cell.
   const reachable = prev.rush ? !target.open : isMinable(prev.floor, idx);
   if (!reachable || (prev.energy <= 0 && !prev.rush)) return { run: prev, events: [] };
@@ -175,6 +182,14 @@ interface BreakOptions {
   triggerGas?: boolean;
 }
 
+/** A hole takes a share of the gems carried (see `CONFIG.hazards.hole`), at least 1 while any are carried. */
+function fallIntoHole(ctx: Ctx, idx: number) {
+  const { run } = ctx;
+  const gemsLost = Math.min(run.gems, Math.max(1, Math.round(run.gems * CONFIG.hazards.hole.share)));
+  run.gems -= gemsLost;
+  ctx.events.push({ type: 'hole', idx, gemsLost });
+}
+
 /** Opens a block and resolves its content. Used by the pickaxe, tremor, and tools. */
 function breakBlock(ctx: Ctx, idx: number, opts: BreakOptions) {
   openBlock(ctx, idx, opts);
@@ -225,10 +240,12 @@ function openBlock(ctx: Ctx, idx: number, opts: BreakOptions) {
   events.push(rush ? { type: 'break', idx, block, combo: rush.blocks } : { type: 'break', idx, block });
 
   const content = cell.content;
-  // Items stay in the open cell until tapped (`collect`), Rush or not; hazards go off now.
+  // Items stay in the open cell until tapped (`collect`), Rush or not; hazards go off now. Stairs stay,
+  // and so does a hole (except in a Rush, where it's lost like the other hazards).
+  const stays = content.kind === 'stairs' || (content.kind === 'hole' && !rush);
   if (isCollectible(content)) events.push({ type: 'itemRevealed', idx, content });
-  else if (content.kind !== 'stairs') cell.content = { kind: 'none' };
-  // During a Rush gas and cave-ins do nothing (and are lost), and the meter doesn't fill.
+  else if (!stays) cell.content = { kind: 'none' };
+  // During a Rush hazards do nothing (and are lost), and the meter doesn't fill.
   if (rush) {
     if (content.kind === 'stairs') events.push({ type: 'stairsRevealed', idx });
     return;
@@ -246,19 +263,25 @@ function openBlock(ctx: Ctx, idx: number, opts: BreakOptions) {
     case 'caveIn': {
       const candidates = neighbors8(run.floor, idx).filter((n) => {
         const c = run.floor.cells[n];
-        // Items lying in these cells are destroyed with them.
-        return c.open && n !== run.floor.entrance && c.content.kind !== 'stairs';
+        // Items lying in these cells are destroyed with them. Stairs and holes stay.
+        const kind = c.content.kind;
+        return c.open && n !== run.floor.entrance && kind !== 'stairs' && kind !== 'hole';
       });
       const filled: number[] = [];
       while (filled.length < CONFIG.hazards.caveInCells && candidates.length > 0) {
-        const n = candidates.splice(rng.int(candidates.length), 1)[0];
-        const hp = CONFIG.blocks.dirt.hp;
-        run.floor.cells[n] = { open: false, block: 'dirt', hp, maxHp: hp, content: { kind: 'none' } };
-        filled.push(n);
+        filled.push(candidates.splice(rng.int(candidates.length), 1)[0]);
       }
+      // The cave-in cell itself fills back in too (plain dirt, so it can't cave in again).
+      filled.push(idx);
+      const hp = CONFIG.blocks.dirt.hp;
+      for (const n of filled) run.floor.cells[n] = { open: false, block: 'dirt', hp, maxHp: hp, content: { kind: 'none' } };
       events.push({ type: 'caveIn', idx, filled });
       break;
     }
+    case 'hole':
+      // Tools only reveal a hole; it takes gems on a later tap.
+      if (opts.source === 'pickaxe') fallIntoHole(ctx, idx);
+      break;
     case 'stairs':
       events.push({ type: 'stairsRevealed', idx });
       break;

@@ -386,8 +386,9 @@ export class App {
     if (idx === undefined) return;
     this.sounds.synth.unlock();
     const cell = this.run.floor.cells[idx];
-    // Revealed stairs and items always take priority over an armed tool (it stays armed after a pickup).
-    const tapTarget = cell.open && (cell.content.kind === 'stairs' || isCollectible(cell.content));
+    // Revealed stairs, items and holes always take priority over an armed tool (it stays armed after a pickup).
+    const kind = cell.content.kind;
+    const tapTarget = cell.open && (kind === 'stairs' || kind === 'hole' || isCollectible(cell.content));
     if (this.armed && !tapTarget) {
       const result = useTool(this.run, this.armed, idx);
       if (result.run === this.run) return this.rejectToolTarget();

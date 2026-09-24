@@ -5,7 +5,7 @@ import type { Floor } from './types';
 export interface CellHint {
   /** Highest gem tier among orthogonal neighbours, if any hold a gem (sparkle). */
   gemNear?: GemTier;
-  /** A neighbour holds a gas pocket or cave-in (dust). */
+  /** A neighbour holds a gas pocket, cave-in or hole (dust). */
   hazardNear: boolean;
   /** This block itself is a chest (only shown with Treasure Sense). */
   chest: boolean;
@@ -26,7 +26,7 @@ export function computeHints(floor: Floor): (CellHint | undefined)[] {
       if (c.content.kind === 'gem' && (!gemNear || tierRank(c.content.tier) > tierRank(gemNear))) {
         gemNear = c.content.tier;
       }
-      if (c.content.kind === 'gas' || c.content.kind === 'caveIn') hazardNear = true;
+      if (c.content.kind === 'gas' || c.content.kind === 'caveIn' || c.content.kind === 'hole') hazardNear = true;
     }
     return { gemNear, hazardNear, chest: cell.content.kind === 'chest' };
   });

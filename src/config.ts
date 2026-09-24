@@ -103,8 +103,10 @@ export const CONFIG = {
   contents: {
     crystal: { fromDepth: 1, base: 0.06, perDepth: -0.002, min: 0.025, max: 0.06 },
     chest: { fromDepth: 1, base: 0.025, perDepth: 0.001, min: 0, max: 0.04 },
-    gas: { fromDepth: 2, base: 0.025, perDepth: 0.0025, min: 0, max: 0.05 },
-    caveIn: { fromDepth: 2, base: 0.02, perDepth: 0.004, min: 0, max: 0.06 },
+    // The three hazards share the total chance gas and cave-ins had before the Hole (~5.2% on floor 2, 11% at the cap).
+    gas: { fromDepth: 2, base: 0.02, perDepth: 0.002, min: 0, max: 0.04 },
+    caveIn: { fromDepth: 2, base: 0.015, perDepth: 0.003, min: 0, max: 0.04 },
+    hole: { fromDepth: 2, base: 0.01, perDepth: 0.002, min: 0, max: 0.03 },
   } satisfies Record<string, { fromDepth: number; base: number; perDepth: number; min: number; max: number }>,
 
   crystal: { energy: 5 },
@@ -119,8 +121,10 @@ export const CONFIG = {
   hazards: {
     /** Gas energy loss = base + floor(depth * perDepth), so it keeps biting as max energy grows. */
     gasEnergyLoss: { base: 12, perDepth: 0 },
-    /** Max open cells (8-neighbourhood of the cave-in) turned back into dirt. */
+    /** Max open cells (8-neighbourhood of the cave-in) turned back into dirt. The cave-in cell itself refills too. */
     caveInCells: 3,
+    /** Share of the gems carried that a hole takes, on the break and on each later tap (rounded, at least 1). */
+    hole: { share: 0.1 },
   },
 
   run: {

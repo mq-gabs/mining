@@ -14,7 +14,7 @@ export type PerkId =
   | 'deepBreath'
   | 'goldFever';
 
-export type HazardKind = 'gas' | 'caveIn';
+export type HazardKind = 'gas' | 'caveIn' | 'hole';
 
 export type Content =
   | { kind: 'none' }
@@ -23,6 +23,8 @@ export type Content =
   | { kind: 'chest' }
   | { kind: 'gas' }
   | { kind: 'caveIn' }
+  /** Stays in the open cell after the break (like stairs) and takes gems on each tap. */
+  | { kind: 'hole' }
   | { kind: 'stairs' };
 
 export type ContentKind = Content['kind'];
@@ -124,6 +126,8 @@ export type RunEvent =
   | { type: 'chest'; idx: number; gems: number }
   | { type: 'gas'; idx: number; energyLost: number; /** Share of the loss the Gas Mask stacks blocked (0..1). */ protection: number }
   | { type: 'caveIn'; idx: number; filled: number[] }
+  /** A hole took gems: on the break, or on a tap of the hole left in the open cell. */
+  | { type: 'hole'; idx: number; gemsLost: number }
   | { type: 'stairsRevealed'; idx: number }
   | { type: 'tool'; tool: ToolId; idx: number; cells: number[] }
   | { type: 'descend'; depth: number; energyRestored: number }

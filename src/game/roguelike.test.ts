@@ -5,7 +5,7 @@ import { contentChanceForDepth, generateFloor } from './floor';
 import { computeHints } from './hints';
 import { availablePerks, PERK_IDS, rollPerkOffer } from './perks';
 import { Rng } from './rng';
-import { choosePerk, createRun, descend, grantAdEnergy, tapCell, tickRun } from './run';
+import { choosePerk, createRun, descend, grantAdEnergy, tapCell, tickRun, useTool } from './run';
 import type { Content, PerkId, RunEvent, RunState } from './types';
 
 /** All-dirt floor, no contents except stairs moved out of the way (bottom-right corner). */
@@ -38,13 +38,70 @@ describe('floor contents', () => {
       const kinds = generateFloor(s, 1).cells.map((c) => c.content.kind);
       if (CONFIG.contents.gas.fromDepth > 1) expect(kinds).not.toContain('gas');
       if (CONFIG.contents.caveIn.fromDepth > 1) expect(kinds).not.toContain('caveIn');
+      if (CONFIG.contents.hole.fromDepth > 1) expect(kinds).not.toContain('hole');
     }
   });
 
   it('generates crystals, chests and hazards at depth', () => {
     const kinds = new Set<string>();
     for (let s = 1; s < 50; s++) generateFloor(s, 6).cells.forEach((c) => kinds.add(c.content.kind));
-    for (const k of ['gem', 'crystal', 'chest', 'gas', 'caveIn', 'stairs', 'none']) expect(kinds).toContain(k);
+    for (const k of ['gem', 'crystal', 'chest', 'gas', 'caveIn', 'hole', 'stairs', 'none']) expect(kinds).toContain(k);
+  });
+});
+
+describe('holes', () => {
+  const holeRun = (gems: number) => {
+    const run = { ...blankRun(), depth: 2, gems, energy: 20 };
+    set(run, E(run) + 1, { kind: 'hole' });
+    return run;
+  };
+  const lost = (events: RunEvent[]) => events.filter((e) => e.type === 'hole').map((e) => e.type === 'hole' && e.gemsLost);
+
+  it('breaking a hole takes 10% of the gems carried (rounded); it stays and each tap takes 10% again, free', () => {
+    const broken = tapCell(holeRun(37), E(holeRun(37)) + 1);
+    expect(broken.run.gems).toBe(33);
+    expect(lost(broken.events)).toEqual([4]);
+    const idx = E(broken.run) + 1;
+    expect(broken.run.floor.cells[idx]).toMatchObject({ open: true, content: { kind: 'hole' } });
+    const again = tapCell(broken.run, idx);
+    expect(again.run.gems).toBe(30);
+    expect(lost(again.events)).toEqual([3]);
+    expect(again.run.energy).toBe(broken.run.energy);
+    expect(again.run.floor.cells[idx].content.kind).toBe('hole');
+  });
+
+  it('takes at least 1 gem while any are carried, and nothing with none', () => {
+    for (const [gems, loss] of [[0, 0], [1, 1], [4, 1], [14, 1], [15, 2]]) {
+      const r = tapCell(holeRun(gems), E(holeRun(gems)) + 1);
+      expect(r.run.gems).toBe(gems - loss);
+      expect(lost(r.events)).toEqual([loss]);
+    }
+  });
+
+  it('does nothing during a Rush: a hole broken in a Rush is lost, and tapping one is a no-op', () => {
+    const rush = { msLeft: 5000, blocks: 0, gems: 0 };
+    const run = { ...holeRun(50), rush };
+    const r = tapCell(run, E(run) + 1);
+    expect(r.run.gems).toBe(50);
+    expect(r.run.floor.cells[E(run) + 1].content.kind).toBe('none');
+    const holed = { ...tapCell(holeRun(50), E(run) + 1).run, rush };
+    expect(tapCell(holed, E(run) + 1).run).toBe(holed);
+  });
+
+  it('tools only reveal a hole; a later tap takes gems', () => {
+    const run = holeRun(50);
+    run.tools.dynamite = 1;
+    const blast = useTool(run, 'dynamite', E(run) + 1);
+    expect(blast.run.gems).toBe(50);
+    expect(lost(blast.events)).toEqual([]);
+    expect(blast.run.floor.cells[E(run) + 1]).toMatchObject({ open: true, content: { kind: 'hole' } });
+    expect(tapCell(blast.run, E(run) + 1).run.gems).toBe(45);
+  });
+
+  it('blocks next to a hole show the hazard hint', () => {
+    const run = holeRun(0);
+    set(run, below(run) + 1, { kind: 'hole' });
+    expect(computeHints(run.floor)[below(run)]?.hazardNear).toBe(true);
   });
 });
 
@@ -99,7 +156,7 @@ describe('pickups and hazards', () => {
     expect(r.run.status).toBe('outOfEnergy');
   });
 
-  it('cave-in refills up to 3 nearby open cells with dirt, sparing entrance and stairs', () => {
+  it('cave-in refills itself and up to 3 nearby open cells with dirt, sparing entrance, stairs and holes', () => {
     const run = blankRun();
     // Open a 3-wide corridor under the entrance: cols 2..4, rows 1..2.
     for (const i of [below(run) - 1, below(run), below(run) + 1, below(run) + run.floor.cols]) {
@@ -110,13 +167,51 @@ describe('pickups and hazards', () => {
     set(run, target, { kind: 'caveIn' });
     const { run: after, events } = tapCell(run, target);
     const ev = events.find((e) => e.type === 'caveIn');
-    expect(ev?.type === 'caveIn' && ev.filled.length).toBe(3);
+    expect(ev?.type === 'caveIn' && ev.filled.length).toBe(4);
     if (ev?.type !== 'caveIn') return;
+    expect(ev.filled).toContain(target);
     for (const i of ev.filled) {
-      expect(after.floor.cells[i]).toMatchObject({ open: false, block: 'dirt', hp: 1 });
+      expect(after.floor.cells[i]).toMatchObject({ open: false, block: 'dirt', hp: 1, content: { kind: 'none' } });
       expect(i).not.toBe(after.floor.entrance);
     }
-    expect(after.floor.cells[target].open).toBe(true);
+    // The refilled cave-in cell is plain dirt: breaking it again sets nothing off. (Right below the entrance,
+    // which never refills, so it stays reachable.)
+    const lone = blankRun();
+    set(lone, below(lone), { kind: 'caveIn' });
+    const caved = tapCell(lone, below(lone));
+    expect(caved.events).toContainEqual({ type: 'caveIn', idx: below(lone), filled: [below(lone)] });
+    const again = tapCell(caved.run, below(lone));
+    expect(again.run.floor.cells[below(lone)].open).toBe(true);
+    expect(again.events.map((e) => e.type)).not.toContain('caveIn');
+
+    // Holes (like stairs) are never covered up.
+    const holed = blankRun();
+    for (const i of [below(holed) - 1, below(holed), below(holed) + 1]) {
+      holed.floor.cells[i].open = true;
+      holed.floor.cells[i].content = { kind: 'hole' };
+    }
+    const next = below(holed) + holed.floor.cols;
+    set(holed, next, { kind: 'caveIn' });
+    const r = tapCell(holed, next);
+    const cave = r.events.find((e) => e.type === 'caveIn');
+    expect(cave?.type === 'caveIn' && cave.filled).toEqual([next]);
+  });
+
+  it('a floor is not clean until a refilled cave-in cell is broken again', () => {
+    const run = blankRun();
+    const target = below(run);
+    run.floor.cells.forEach((c, i) => {
+      if (i !== target) Object.assign(c, { open: true, hp: 0, content: { kind: 'none' } });
+    });
+    set(run, target, { kind: 'caveIn' });
+    const caved = tapCell(run, target).run;
+    expect(caved.floor.cleared).toBeFalsy();
+    let r = caved;
+    for (let i = 0; i < 20 && !r.floor.cleared; i++) {
+      const closed = r.floor.cells.findIndex((c) => !c.open);
+      r = tapCell(r, closed).run;
+    }
+    expect(r.floor.cleared).toBe(true);
   });
 
   it('chest gives gems scaled by depth and gem value', () => {

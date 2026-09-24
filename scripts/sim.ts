@@ -78,7 +78,7 @@ function scannedScore(c: Cell): number {
   switch (c.content.kind) {
     case 'gem': return -1.5;
     case 'crystal': case 'chest': return -1;
-    case 'gas': case 'caveIn': return 3;
+    case 'gas': case 'caveIn': case 'hole': return 3;
     default: return 0;
   }
 }

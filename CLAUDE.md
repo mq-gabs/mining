@@ -82,7 +82,7 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   **Balance, open:** this moved bot run 10 from floor 12.5 to about 9.3 (run 1 unchanged at 4.7), below the bot
   target. The mask change alone accounts for most of it (9.8 with gas still at 8). Levers: gas at 10, or 33% per
   stack (immune at 3).
-- Perk changes (spec: `docs/specs/2026-09-24-perk-changes.md`). Greed was removed (`gemValueMult` stays: the gem value
+- Perk changes. Greed was removed (`gemValueMult` stays: the gem value
   upgrade uses it). Efficient Swing is 10% (was 15%). Crystals give 5 energy (was 10). New perk **Gold Fever** 🔥
   (`goldFever`, not stackable): each gem picked up has `perks.goldFever.chance` (50%) to give +1 energy, one roll per
   pickup even when Lucky Strike doubles it, no cap per floor. Chest gems don't count, and it works during a Rush.
@@ -97,6 +97,15 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
 - Crystals thin out with depth, and the block mix keeps hardening past floor 16. Both are energy sinks
   that guarantee runs end.
 - Hints use orthogonal neighbours (same as mining adjacency); cave-ins use the 8-neighbourhood.
+- Event changes. A cave-in also refills its own cell (plain dirt,
+  no content), on top of `caveInCells` (3) neighbours, and never covers stairs or a hole. New hazard **Hole**
+  (`hole`, from floor 2): breaking it with the pickaxe (or Tremor) takes `hazards.hole.share` (10%, rounded, at least 1) of
+  `run.gems`, and the hole stays in the open cell like stairs. Each later tap on it takes 10% again (free, no
+  energy). Tools only reveal it. In a Rush a broken hole is lost and tapping one is a no-op. Blocks next to it show
+  the shared dust hint. A tap on a hole goes to the hole even with a tool armed. The `hole` event (`gemsLost`)
+  drives the float (`🕳️−3💎`, or `🕳️` alone at 0), a ring, falling sparks and a whoop-and-clink sound. Gas,
+  cave-in and hole chances were cut so the total hazard chance stays as before. Neither change moved the bot's
+  depth (run 10 about 7.3); late-run gems kept dip ~10%.
 - Tools can only target open cells or blocks the pickaxe could reach, so they can't skip exploration.
   A tool that would affect nothing (e.g. rescanning a known area) is a no-op and keeps its charge.
 - Only one perk offer can be pending. Since chests are opened one tap at a time (two-step items), a blast can no
@@ -145,7 +154,7 @@ to read hints. Tuning lives in `CONFIG.rush` and `CONFIG.music.rush`; tests are 
 ## Two-step items
 
 Gems, crystals and chests (`isCollectible`) take two taps: breaking the block reveals the item, which then lies
-in the open cell until tapped. Hazards (gas, cave-in) still go off on break, and stairs were already two-step.
+in the open cell until tapped. Hazards (gas, cave-in, hole) still go off on break, and stairs were already two-step.
 
 - **Pickup** (`collect` in `run.ts`, reached through `tapCell` on an open item cell): free, no energy. Lucky Strike,
   Gold Fever and the chest perk roll apply at pickup. A chest perk offer carries the chest's `idx` (for the float).

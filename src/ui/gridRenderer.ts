@@ -287,6 +287,13 @@ export class GridRenderer {
             this.burst(floor, n, BLOCK_COLORS.dirt.top, now, { count: 6, speed: 60, size: 4, duration: 260, gravity: 900 });
           }
           break;
+        case 'hole':
+          this.float(floor, e.idx, e.gemsLost > 0 ? `🕳️−${e.gemsLost}💎` : '🕳️', DAMAGE_COLOR, now);
+          if (e.gemsLost > 0) {
+            this.ring(floor, e.idx, DAMAGE_COLOR, now, 0.6);
+            this.burst(floor, e.idx, GEM_COLORS.quartz, now, { count: 6, speed: 90, size: 3, duration: 260, star: true, gravity: 700 });
+          }
+          break;
         case 'itemRevealed': {
           const c = e.content;
           const color = c.kind === 'gem' ? GEM_COLORS[c.tier] : c.kind === 'crystal' ? CRYSTAL_COLOR : TREASURE_COLOR;
@@ -533,6 +540,8 @@ export class GridRenderer {
       this.drawItem(cell.content, idx, x, y, s, now);
     }
 
+    if (cell.content.kind === 'hole') this.drawHole(x, y, s);
+
     if (cell.content.kind === 'stairs') {
       const pulse = 0.5 + 0.5 * Math.sin(now / 250);
       const glow = ctx.createRadialGradient(x + s / 2, y + s / 2, 2, x + s / 2, y + s / 2, s * 0.7);
@@ -656,6 +665,28 @@ export class GridRenderer {
     ctx.globalAlpha = alpha;
   }
 
+  /** A hole in the floor of an open cell: a dark oval with a soft inner shadow and a lit far rim. Static. */
+  private drawHole(x: number, y: number, s: number) {
+    const ctx = this.ctx;
+    const cx = x + s / 2;
+    const cy = y + s * 0.54;
+    const rx = s * 0.34;
+    const ry = s * 0.24;
+    const g = ctx.createRadialGradient(cx, cy + ry * 0.2, 1, cx, cy, rx);
+    g.addColorStop(0, '#000');
+    g.addColorStop(0.7, '#07040a');
+    g.addColorStop(1, 'rgba(20,12,8,0.6)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(232,201,160,0.35)';
+    ctx.lineWidth = Math.max(1.5, s * 0.03);
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, Math.PI * 1.05, Math.PI * 1.95);
+    ctx.stroke();
+  }
+
   /** An item lying in an open cell, waiting to be tapped: a soft glow and a gentle bob. */
   private drawItem(content: Content, idx: number, x: number, y: number, s: number, now: number) {
     const ctx = this.ctx;
@@ -698,7 +729,7 @@ export class GridRenderer {
       drawGemIcon(ctx, c.tier, cx, cy, bs * 0.22);
       return;
     }
-    const icon = { crystal: '⚡', chest: '🧰', gas: '☁️', caveIn: '🪨', stairs: '🪜' }[c.kind];
+    const icon = { crystal: '⚡', chest: '🧰', gas: '☁️', caveIn: '🪨', hole: '🕳️', stairs: '🪜' }[c.kind];
     ctx.font = `${Math.round(bs * 0.4)}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
