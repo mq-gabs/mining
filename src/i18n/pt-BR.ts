@@ -115,8 +115,8 @@ export const ptBR: Record<MessageKey, string> = {
   'perk.treasureSense.desc': 'Baús brilham quando ficam expostos.',
   'perk.deepBreath': 'Respiração Profunda',
   'perk.deepBreath.desc': 'Cada novo andar recupera {n} de energia.',
-  'perk.greed': 'Ganância',
-  'perk.greed.desc': 'Valor das gemas +{pct}, mas energia máxima −{n}.',
+  'perk.goldFever': 'Febre do Ouro',
+  'perk.goldFever.desc': '{pct} de ganhar +{n} de energia ao pegar uma gema.',
 
   // Gems
   'gems.title': 'Gemas nesta expedição',

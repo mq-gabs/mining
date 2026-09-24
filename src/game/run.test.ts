@@ -90,7 +90,7 @@ describe('tapCell', () => {
     expect(after.energy).toBe(broken.run.energy);
     expect(after.gems).toBe(10);
     expect(after.floor.cells[idx].content.kind).toBe('none');
-    expect(events).toContainEqual({ type: 'gem', idx, tier: 'amethyst', value: 10, doubled: false });
+    expect(events).toContainEqual({ type: 'gem', idx, tier: 'amethyst', value: 10, doubled: false, energy: 0 });
     expect(after.stats.gemsByTier).toEqual({ amethyst: 1 });
     expect(endRun(after, 'left').summary.gemsByTier).toEqual({ amethyst: 1 });
   });

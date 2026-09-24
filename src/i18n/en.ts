@@ -116,8 +116,8 @@ export const en = {
   'perk.treasureSense.desc': 'Chests glow once exposed.',
   'perk.deepBreath': 'Deep Breath',
   'perk.deepBreath.desc': 'Each new floor restores {n} energy.',
-  'perk.greed': 'Greed',
-  'perk.greed.desc': 'Gem values +{pct}, but max energy −{n}.',
+  'perk.goldFever': 'Gold Fever',
+  'perk.goldFever.desc': '{pct} chance picking up a gem gives +{n} energy.',
 
   // Gems
   'gems.title': 'Gems this run',

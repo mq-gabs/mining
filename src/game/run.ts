@@ -293,7 +293,9 @@ export function collect(prev: RunState, idx: number): ActionResult {
       run.gems += value;
       if (run.rush) run.rush.gems += value;
       run.stats.gemsByTier[content.tier] = (run.stats.gemsByTier[content.tier] ?? 0) + (doubled ? 2 : 1);
-      events.push({ type: 'gem', idx, tier: content.tier, value, doubled });
+      const fever = hasPerk(run, 'goldFever') && rng.chance(CONFIG.perks.goldFever.chance);
+      const energy = fever ? gainEnergy(run, CONFIG.perks.goldFever.energy) : 0;
+      events.push({ type: 'gem', idx, tier: content.tier, value, doubled, energy });
       break;
     }
     case 'crystal':

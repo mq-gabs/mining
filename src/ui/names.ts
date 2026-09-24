@@ -27,8 +27,8 @@ export function perkDescription(id: PerkId): string {
       return t('perk.efficientSwing.desc', { pct: fmtPct(P.efficientSwing.chance) });
     case 'deepBreath':
       return t('perk.deepBreath.desc', { n: P.deepBreath.energy });
-    case 'greed':
-      return t('perk.greed.desc', { pct: fmtPct(P.greed.gemValueBonus), n: P.greed.maxEnergyPenalty });
+    case 'goldFever':
+      return t('perk.goldFever.desc', { pct: fmtPct(P.goldFever.chance), n: P.goldFever.energy });
     case 'gasMask':
       return t('perk.gasMask.desc', { pct: fmtPct(P.gasMask.reduction) });
     case 'prospector':

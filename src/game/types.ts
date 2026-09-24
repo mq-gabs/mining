@@ -12,7 +12,7 @@ export type PerkId =
   | 'efficientSwing'
   | 'treasureSense'
   | 'deepBreath'
-  | 'greed';
+  | 'goldFever';
 
 export type HazardKind = 'gas' | 'caveIn';
 
@@ -119,7 +119,7 @@ export type RunEvent =
   | { type: 'break'; idx: number; block: BlockType; combo?: number }
   /** A break revealed an item; it lies in the open cell until tapped. */
   | { type: 'itemRevealed'; idx: number; content: Content }
-  | { type: 'gem'; idx: number; tier: GemTier; value: number; doubled: boolean }
+  | { type: 'gem'; idx: number; tier: GemTier; value: number; doubled: boolean; energy: number }
   | { type: 'crystal'; idx: number; energy: number }
   | { type: 'chest'; idx: number; gems: number }
   | { type: 'gas'; idx: number; energyLost: number; /** Share of the loss the Gas Mask stacks blocked (0..1). */ protection: number }

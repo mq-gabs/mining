@@ -239,7 +239,8 @@ export class GridRenderer {
           break;
         case 'gem': {
           const rank = GEM_TIERS.indexOf(e.tier);
-          this.float(floor, e.idx, `+${e.value}${e.doubled ? ' ×2' : ''}`, GEM_COLORS[e.tier], now, 20 + rank * 2, e.tier);
+          const energy = e.energy > 0 ? ` +${e.energy}⚡` : '';
+          this.float(floor, e.idx, `+${e.value}${e.doubled ? ' ×2' : ''}${energy}`, GEM_COLORS[e.tier], now, 20 + rank * 2, e.tier);
           this.burst(floor, e.idx, GEM_COLORS[e.tier], now, {
             count: 5 + rank * 3,
             speed: 110 + rank * 30,

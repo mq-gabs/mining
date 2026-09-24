@@ -107,7 +107,7 @@ export const CONFIG = {
     caveIn: { fromDepth: 2, base: 0.02, perDepth: 0.004, min: 0, max: 0.06 },
   } satisfies Record<string, { fromDepth: number; base: number; perDepth: number; min: number; max: number }>,
 
-  crystal: { energy: 10 },
+  crystal: { energy: 5 },
   chest: {
     /** Chance a chest offers a perk choice instead of gems. */
     perkChance: 0.2,
@@ -250,9 +250,10 @@ export const CONFIG = {
     gasMask: { reduction: 0.25, maxStacks: 4 },
     luckyStrike: { chance: 0.2 },
     tremor: { damage: 1 },
-    efficientSwing: { chance: 0.15 },
+    efficientSwing: { chance: 0.1 },
     deepBreath: { energy: 5 },
-    greed: { gemValueBonus: 0.5, maxEnergyPenalty: 10 },
+    /** `chance` a gem picked up gives `energy` (Lucky Strike's double still gives it once). */
+    goldFever: { energy: 1, chance: 0.5 },
   },
 
   /**

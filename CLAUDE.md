@@ -14,7 +14,8 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   M6 ads (`AdService` + `MockAdService` in `platform/ads.ts`, behind the `ads` feature flag).
 - All six milestones of the spec are done. Extra: procedural adaptive background music (`ui/music.ts`),
   Rush (see the Rush section below), the clean floor bonus (see its section below),
-  language support (English and pt-BR, `src/i18n/`), stackable Gas Mask (see the deviations below), and a dev tools
+  language support (English and pt-BR, `src/i18n/`), stackable Gas Mask and the perk changes (see the deviations
+  below), and a dev tools
   panel (`ui/devPanel.ts`, behind the `devTools` flag).
 
 ## Commands
@@ -81,6 +82,16 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   **Balance, open:** this moved bot run 10 from floor 12.5 to about 9.3 (run 1 unchanged at 4.7), below the bot
   target. The mask change alone accounts for most of it (9.8 with gas still at 8). Levers: gas at 10, or 33% per
   stack (immune at 3).
+- Perk changes (spec: `docs/specs/2026-09-24-perk-changes.md`). Greed was removed (`gemValueMult` stays: the gem value
+  upgrade uses it). Efficient Swing is 10% (was 15%). Crystals give 5 energy (was 10). New perk **Gold Fever** 🔥
+  (`goldFever`, not stackable): each gem picked up has `perks.goldFever.chance` (50%) to give +1 energy, one roll per
+  pickup even when Lucky Strike doubles it, no cap per floor. Chest gems don't count, and it works during a Rush.
+  The `gem` event carries `energy` (0 when not gained), shown in the float (`+5 ×2 +1⚡`). Gold Fever gets stronger
+  with depth, because the gem chance rises: at 100% with crystals at 10, a fully upgraded bot never ran dry (floor
+  146). The chance mostly limits outliers (the deepest bot reached floor 15 at 25%, 20 at 50%, 30 at 100%), not the
+  average. The "runs always end" test's bot doesn't pick up items, so it doesn't cover Gold Fever; the sim does.
+  **Balance, open:** these changes moved bot run 10 from about 9.3 to 7.2 (run 1 from 4.7 to 4.2), mostly because of
+  the crystal nerf. The user chose to keep crystals at 5 and Gold Fever at 50%.
 - The gem tier distribution is a per-depth `gems.tierMix` table (like `blockMix`). An earlier per-floor
   "decay" multiplier was a no-op because it scaled all tiers equally. Don't reintroduce that pattern.
 - Crystals thin out with depth, and the block mix keeps hardening past floor 16. Both are energy sinks
@@ -105,7 +116,7 @@ to read hints. Tuning lives in `CONFIG.rush` and `CONFIG.music.rush`; tests are 
   without adjacency. **Breaks** reveal items as usual (two-step, see below); gas and cave-ins do nothing and are
   lost. Breaking ignores perks (Sharp Edge, Tremor, Efficient Swing; see `powerWithoutPerks`), and Deep Breath is
   skipped. **Pickups** during a Rush follow the normal rules (the user's choice): crystals give energy, Lucky
-  Strike and Greed apply, and gems count toward `rush.gems`. Perk offers wait for the Rush to end
+  Strike and Gold Fever apply, and gems count toward `rush.gems`. Perk offers wait for the Rush to end
   (`rush.perkOfferPending`, the source, at most one): a floor offer that comes due, or a chest that rolls one
   (`perkOfferHeld` event: the "Perk!" float and jingle now, the choice later). A second chest perk while one is
   held pays gems, and a floor offer replaces a held chest one. A floor-clear energy refund also waits
@@ -137,7 +148,7 @@ Gems, crystals and chests (`isCollectible`) take two taps: breaking the block re
 in the open cell until tapped. Hazards (gas, cave-in) still go off on break, and stairs were already two-step.
 
 - **Pickup** (`collect` in `run.ts`, reached through `tapCell` on an open item cell): free, no energy. Lucky Strike,
-  Greed and the chest perk roll apply at pickup. A chest perk offer carries the chest's `idx` (for the float).
+  Gold Fever and the chest perk roll apply at pickup. A chest perk offer carries the chest's `idx` (for the float).
 - **Events:** a break emits `itemRevealed` (a ring and a soft glint sound, once per action). Pickup emits the usual
   `gem` / `crystal` / `chest` events, so gem flights and floats work as before. Items are drawn in open cells
   with a glow and a bob (`GridRenderer.drawItem`; no bob with reduced motion).
@@ -189,8 +200,8 @@ clear (a test checks it), or cleaning could pay for itself and runs would never 
 - Longer balance analyses go in `docs/reports/YYYY-MM-DD-<topic>.md` (setup, table, findings, next levers).
   Append an update section when a follow-up change is measured, instead of a new file.
 - Known open issue: upgrades bought per run rise over time instead of slowing down (~1.2 → 5.1 by run 10
-  with the cleaning bot, ~1.2 → 4.0 with Rush and no cleaning, ~0.9 → 2.9 before Rush, with gas at 8 energy and an all-blocking Gas Mask. With the stackable mask and gas at 12 it's ~1.0 → 2.3, but runs
-  are shallower; it was ~1.0 → 4.1 with gas at 5, and ~0.8 → 2.7 before M4's tool upgrades).
+  with the cleaning bot, ~1.2 → 4.0 with Rush and no cleaning, ~0.9 → 2.9 before Rush, with gas at 8 energy and an all-blocking Gas Mask. With the stackable mask and gas at 12 it's ~1.0 → 2.3, and
+  ~0.7 → 1.5 after the perk changes, but runs are shallower; it was ~1.0 → 4.1 with gas at 5, and ~0.8 → 2.7 before M4's tool upgrades).
 
 ## Testing gotchas
 

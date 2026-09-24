@@ -74,15 +74,10 @@ export const PERKS: Record<PerkId, PerkDef> = {
     icon: '🫁',
     stackable: false,
   },
-  greed: {
-    id: 'greed',
-    icon: '💰',
+  goldFever: {
+    id: 'goldFever',
+    icon: '🔥',
     stackable: false,
-    onTake: (run) => {
-      run.mods.gemValueMult += P.greed.gemValueBonus;
-      run.mods.maxEnergy -= P.greed.maxEnergyPenalty;
-      run.energy = Math.min(run.energy, run.mods.maxEnergy);
-    },
   },
 };
 

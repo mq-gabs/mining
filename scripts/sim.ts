@@ -30,8 +30,8 @@ import type { Cell, PerkId, RunState, RunSummary, ToolId } from '../src/game/typ
 
 /** Bot's perk preference, best first. */
 const PERK_PRIORITY: PerkId[] = [
-  'secondWind', 'deepBreath', 'sharpEdge', 'efficientSwing', 'tremor', 'gasMask',
-  'luckyStrike', 'treasureSense', 'prospector', 'greed',
+  'secondWind', 'deepBreath', 'goldFever', 'sharpEdge', 'efficientSwing', 'tremor', 'gasMask',
+  'luckyStrike', 'treasureSense', 'prospector',
 ];
 
 declare const process: { argv: string[]; env: Record<string, string | undefined> };

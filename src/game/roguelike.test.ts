@@ -247,16 +247,50 @@ describe('perks', () => {
     expect(run.status).toBe('outOfEnergy');
   });
 
-  it('Sharp Edge, Second Wind and Greed apply immediately', () => {
+  it('Sharp Edge and Second Wind apply immediately', () => {
     const take = (perk: PerkId, run = blankRun()) =>
       choosePerk({ ...run, status: 'choosingPerk', perkOffer: { source: 'floor', choices: [perk] } }, perk).run;
     expect(take('sharpEdge').mods.power).toBe(2);
     expect(take('sharpEdge', take('sharpEdge')).perks.sharpEdge).toBe(2);
     expect(take('secondWind', { ...blankRun(), energy: 10 }).energy).toBe(10 + CONFIG.perks.secondWind.energy);
-    const greedy = take('greed');
-    expect(greedy.mods.gemValueMult).toBeCloseTo(1 + CONFIG.perks.greed.gemValueBonus);
-    expect(greedy.mods.maxEnergy).toBe(CONFIG.energy.start - CONFIG.perks.greed.maxEnergyPenalty);
-    expect(greedy.energy).toBe(greedy.mods.maxEnergy);
+  });
+
+  it('Gold Fever: a chance per gem picked up to gain energy, once even when doubled, capped at max', () => {
+    const gain = CONFIG.perks.goldFever.energy;
+    const run = { ...blankRun(['goldFever', 'luckyStrike']), energy: 20 };
+    set(run, E(run) + 1, { kind: 'gem', tier: 'quartz' });
+    let fevers = 0;
+    let doubledFevers = 0;
+    for (let s = 0; s < 400; s++) {
+      const broken = tapCell({ ...run, rngState: s * 7919 }, E(run) + 1).run;
+      const r = tapCell(broken, E(run) + 1);
+      const gem = r.events.find((e) => e.type === 'gem');
+      if (gem?.type !== 'gem') throw new Error('no gem event');
+      expect([0, gain]).toContain(gem.energy);
+      expect(r.run.energy).toBe(broken.energy + gem.energy);
+      if (gem.energy > 0) fevers++;
+      if (gem.energy > 0 && gem.doubled) doubledFevers++;
+    }
+    expect(fevers / 400).toBeCloseTo(CONFIG.perks.goldFever.chance, 1);
+    expect(doubledFevers).toBeGreaterThan(0);
+
+    const full = { ...blankRun(['goldFever']), energy: CONFIG.energy.start };
+    set(full, E(full) + 1, { kind: 'gem', tier: 'quartz' });
+    for (let s = 0; s < 20; s++) {
+      const broken = tapCell({ ...full, rngState: s * 7919 }, E(full) + 1).run;
+      expect(tapCell(broken, E(full) + 1).run.energy).toBeLessThanOrEqual(full.mods.maxEnergy);
+    }
+
+    // Chest gems don't count, and without the perk a gem gives no energy.
+    const plain = { ...blankRun(), energy: 20 };
+    set(plain, E(plain) + 1, { kind: 'gem', tier: 'quartz' });
+    const r = breakAndCollect(plain, E(plain) + 1);
+    expect(r.run.energy).toBe(19);
+    expect(r.events).toContainEqual(expect.objectContaining({ type: 'gem', energy: 0 }));
+    const chest = { ...blankRun(['goldFever']), energy: 20, rngState: 5 };
+    set(chest, E(chest) + 1, { kind: 'chest' });
+    const opened = breakAndCollect(chest, E(chest) + 1);
+    if (opened.events.some((e) => e.type === 'chest')) expect(opened.run.energy).toBe(19);
   });
 
   it('Deep Breath restores energy on each new floor', () => {

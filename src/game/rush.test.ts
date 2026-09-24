@@ -134,17 +134,17 @@ describe('rush', () => {
     expect(picked.run.rush).toBeDefined();
   });
 
-  it('pickups count toward the Rush gems, with Lucky Strike and Greed', () => {
-    const run = rushing(blankRun());
-    run.perks = { luckyStrike: 1, greed: 1 };
-    run.mods.gemValueMult += CONFIG.perks.greed.gemValueBonus;
-    const value = Math.round(CONFIG.gems.tiers.amethyst.value * run.mods.gemValueMult);
+  it('pickups count toward the Rush gems, with Lucky Strike and Gold Fever', () => {
+    const run = rushing({ ...blankRun(), energy: 20 });
+    run.perks = { luckyStrike: 1, goldFever: 1 };
+    const value = CONFIG.gems.tiers.amethyst.value;
     let doubled = 0;
     for (let seed = 0; seed < 60; seed++) {
       const broken = tapCell({ ...run, rngState: seed * 7919 }, E(run) + 1, { kind: 'gem', tier: 'amethyst' });
       const r = tap(broken.run, E(run) + 1);
       expect([value, value * 2]).toContain(r.run.gems);
       expect(r.run.rush?.gems).toBe(r.run.gems);
+      expect([20, 20 + CONFIG.perks.goldFever.energy]).toContain(r.run.energy);
       if (r.run.gems === value * 2) doubled++;
     }
     expect(doubled).toBeGreaterThan(0);
