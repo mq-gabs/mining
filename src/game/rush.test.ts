@@ -111,11 +111,11 @@ describe('rush', () => {
     expect(tapCell(run, below(run)).run.momentum).toBe(0);
   });
 
-  it('only collects gems: crystals, gas and cave-ins do nothing and are lost', () => {
+  it('gas and cave-ins do nothing and are lost', () => {
     const run = rushing({ ...blankRun(), energy: 20 });
     // Cave-in candidates: an open neighbour it could refill.
     run.floor.cells[below(run) + 1].open = true;
-    for (const content of [{ kind: 'crystal' }, { kind: 'gas' }, { kind: 'caveIn' }] as Content[]) {
+    for (const content of [{ kind: 'gas' }, { kind: 'caveIn' }] as Content[]) {
       const r = tapCell(structuredClone(run), below(run), content);
       expect(r.run.energy).toBe(20);
       expect(r.run.floor.cells[below(run)].content).toEqual({ kind: 'none' });
@@ -124,34 +124,61 @@ describe('rush', () => {
     }
   });
 
-  it('chests pay gems but never offer a perk', () => {
-    let offers = 0;
-    for (let seed = 0; seed < 60; seed++) {
-      const run = rushing({ ...blankRun(), rngState: seed });
-      const r = tapCell(run, below(run), { kind: 'chest' });
-      expect(r.run.status).toBe('playing');
-      expect(r.run.gems).toBeGreaterThan(0);
-      expect(r.run.rush?.gems).toBe(r.run.gems);
-      if (r.events.some((e) => e.type === 'perkOffer')) offers++;
-    }
-    expect(offers).toBe(0);
+  it('breaks reveal items, and a tap picks them up with normal rules (crystals give energy)', () => {
+    const run = rushing({ ...blankRun(), energy: 20 });
+    const broken = tapCell(run, below(run), { kind: 'crystal' });
+    expect(types(broken.events)).toEqual(['hit', 'break', 'itemRevealed']);
+    expect(broken.run.floor.cells[below(run)].content).toEqual({ kind: 'crystal' });
+    const picked = tap(broken.run, below(run));
+    expect(picked.run.energy).toBe(20 + CONFIG.crystal.energy);
+    expect(picked.run.rush).toBeDefined();
   });
 
-  it('ignores perks: Sharp Edge, Tremor, Lucky Strike and Greed', () => {
+  it('pickups count toward the Rush gems, with Lucky Strike and Greed', () => {
     const run = rushing(blankRun());
-    run.perks = { sharpEdge: 1, tremor: 1, luckyStrike: 1, greed: 1 };
-    run.mods.power += CONFIG.perks.sharpEdge.power;
+    run.perks = { luckyStrike: 1, greed: 1 };
     run.mods.gemValueMult += CONFIG.perks.greed.gemValueBonus;
+    const value = Math.round(CONFIG.gems.tiers.amethyst.value * run.mods.gemValueMult);
+    let doubled = 0;
+    for (let seed = 0; seed < 60; seed++) {
+      const broken = tapCell({ ...run, rngState: seed * 7919 }, E(run) + 1, { kind: 'gem', tier: 'amethyst' });
+      const r = tap(broken.run, E(run) + 1);
+      expect([value, value * 2]).toContain(r.run.gems);
+      expect(r.run.rush?.gems).toBe(r.run.gems);
+      if (r.run.gems === value * 2) doubled++;
+    }
+    expect(doubled).toBeGreaterThan(0);
+  });
+
+  it('a chest perk offer rolled mid-Rush waits for the Rush to end; a second one pays gems', () => {
+    let held = 0;
+    for (let seed = 0; seed < 80; seed++) {
+      const run = rushing({ ...blankRun(), rngState: seed * 7919 });
+      set(run, below(run), 'dirt', 1, { kind: 'chest' });
+      set(run, E(run) + 1, 'dirt', 1, { kind: 'chest' });
+      let r = tap(tap(run, below(run)).run, below(run));
+      expect(r.run.status).toBe('playing');
+      if (!r.events.some((e) => e.type === 'perkOfferHeld')) continue;
+      held++;
+      expect(r.run.rush?.perkOfferPending).toBe('chest');
+      // With an offer already held, the next chest always pays gems.
+      r = tap(tap(r.run, E(run) + 1).run, E(run) + 1);
+      expect(types(r.events)).toEqual(['chest']);
+      const end = tickRun(r.run, RUSH_MS);
+      expect(end.run.status).toBe('choosingPerk');
+      expect(end.run.perkOffer?.source).toBe('chest');
+    }
+    expect(held).toBeGreaterThan(0);
+  });
+
+  it('ignores Sharp Edge and Tremor when breaking', () => {
+    const run = rushing(blankRun());
+    run.perks = { sharpEdge: 1, tremor: 1 };
+    run.mods.power += CONFIG.perks.sharpEdge.power;
     set(run, below(run), 'hard', R.powerMult + 1);
     const hit = tapCell(run, below(run));
     expect(hit.run.floor.cells[below(run)].open).toBe(false);
     expect(types(hit.events)).toEqual(['hit']);
-
-    for (let seed = 0; seed < 40; seed++) {
-      const r = tapCell({ ...run, rngState: seed }, E(run) + 1, { kind: 'gem', tier: 'amethyst' });
-      expect(r.run.gems).toBe(CONFIG.gems.tiers.amethyst.value);
-      expect(types(r.events)).toEqual(['hit', 'break', 'gem']);
-    }
   });
 
   it('skips Deep Breath and holds a floor perk offer until the Rush ends', () => {
@@ -180,7 +207,9 @@ describe('rush', () => {
     set(run, E(run) + 1, 'dirt', 1, { kind: 'chest' });
     run = tapCell(run, below(run)).run;
     run = tapCell(run, E(run) + 1).run;
+    run = tap(tap(run, below(run)).run, E(run) + 1).run;
     const gems = run.gems;
+    expect(gems).toBeGreaterThan(0);
     expect(run.rush).toMatchObject({ blocks: 2, gems });
 
     let events: RunEvent[] = [];

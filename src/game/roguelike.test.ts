@@ -5,8 +5,8 @@ import { contentChanceForDepth, generateFloor } from './floor';
 import { computeHints } from './hints';
 import { availablePerks, PERK_IDS, rollPerkOffer } from './perks';
 import { Rng } from './rng';
-import { choosePerk, createRun, descend, tapCell, tickRun } from './run';
-import type { Content, PerkId, RunState } from './types';
+import { choosePerk, createRun, descend, grantAdEnergy, tapCell, tickRun } from './run';
+import type { Content, PerkId, RunEvent, RunState } from './types';
 
 /** All-dirt floor, no contents except stairs moved out of the way (bottom-right corner). */
 function blankRun(perks: PerkId[] = []): RunState {
@@ -20,6 +20,11 @@ function blankRun(perks: PerkId[] = []): RunState {
   run.floor.cells[run.floor.cells.length - 1].content = { kind: 'stairs' };
   for (const p of perks) run.perks[p] = 1;
   return run;
+}
+
+/** Breaks the (1 HP) block at `idx`, then taps again to pick up what it revealed. */
+function breakAndCollect(run: RunState, idx: number) {
+  return tapCell(tapCell(run, idx).run, idx);
 }
 
 const E = (run: RunState) => run.floor.entrance;
@@ -48,13 +53,13 @@ describe('pickups and hazards', () => {
     const run = blankRun();
     run.energy = 20;
     set(run, E(run) + 1, { kind: 'crystal' });
-    const r = tapCell(run, E(run) + 1);
+    const r = breakAndCollect(run, E(run) + 1);
     expect(r.run.energy).toBe(20 - 1 + CONFIG.crystal.energy);
     expect(r.events).toContainEqual({ type: 'crystal', idx: E(run) + 1, energy: CONFIG.crystal.energy });
 
     const full = blankRun();
     set(full, E(full) + 1, { kind: 'crystal' });
-    expect(tapCell(full, E(full) + 1).run.energy).toBe(full.mods.maxEnergy);
+    expect(breakAndCollect(full, E(full) + 1).run.energy).toBe(full.mods.maxEnergy);
   });
 
   it('gas pocket drains energy; each Gas Mask stack softens it, and a full set cancels it', () => {
@@ -120,7 +125,7 @@ describe('pickups and hazards', () => {
     run.mods.gemValueMult = 2;
     run.rngState = 1234;
     set(run, E(run) + 1, { kind: 'chest' });
-    const r = tapCell(run, E(run) + 1);
+    const r = breakAndCollect(run, E(run) + 1);
     const chest = r.events.find((e) => e.type === 'chest');
     const offer = r.events.find((e) => e.type === 'perkOffer');
     expect(chest || offer).toBeTruthy();
@@ -139,10 +144,11 @@ describe('pickups and hazards', () => {
       const run = blankRun();
       run.rngState = s * 7919;
       set(run, E(run) + 1, { kind: 'chest' });
-      const r = tapCell(run, E(run) + 1);
+      const r = breakAndCollect(run, E(run) + 1);
       if (r.run.status === 'choosingPerk') {
         offers++;
         expect(r.run.perkOffer?.source).toBe('chest');
+        expect(r.events).toContainEqual(expect.objectContaining({ type: 'perkOffer', idx: E(run) + 1 }));
       }
     }
     expect(offers / 200).toBeGreaterThan(CONFIG.chest.perkChance * 0.5);
@@ -278,7 +284,7 @@ describe('perks', () => {
     for (let s = 0; s < 400; s++) {
       const run = { ...blankRun(['efficientSwing', 'luckyStrike']), rngState: s * 104729 };
       set(run, E(run) + 1, { kind: 'gem', tier: 'quartz' });
-      const r = tapCell(run, E(run) + 1);
+      const r = breakAndCollect(run, E(run) + 1);
       if (r.run.energy === run.energy) free++;
       if (r.run.gems === 2) doubled++;
     }
@@ -291,5 +297,69 @@ describe('perks', () => {
     const withOffer = (p: PerkId) => ({ ...run, perkOffer: { source: 'chest' as const, choices: [p] } });
     expect(choosePerk(withOffer('secondWind'), 'secondWind').run.status).toBe('playing');
     expect(choosePerk(withOffer('gasMask'), 'gasMask').run.status).toBe('outOfEnergy');
+  });
+});
+
+describe('two-step items', () => {
+  it('a break reveals the item; a free tap picks it up; tapping again does nothing', () => {
+    for (const content of [{ kind: 'gem', tier: 'quartz' }, { kind: 'crystal' }, { kind: 'chest' }] as Content[]) {
+      const run = blankRun();
+      run.energy = 20;
+      set(run, below(run), content);
+      const broken = tapCell(run, below(run));
+      expect(broken.run.floor.cells[below(run)]).toMatchObject({ open: true, content });
+      expect(broken.run.gems).toBe(0);
+      expect(broken.run.energy).toBe(19);
+      const picked = tapCell(broken.run, below(run));
+      expect(picked.run.floor.cells[below(run)].content.kind).toBe('none');
+      expect(picked.run.energy).toBeGreaterThanOrEqual(19);
+      if (picked.run.status === 'playing') expect(tapCell(picked.run, below(run)).run).toBe(picked.run);
+    }
+  });
+
+  it('a cave-in next to an uncollected item buries and destroys it', () => {
+    const run = blankRun();
+    const gem = below(run);
+    set(run, gem, { kind: 'gem', tier: 'quartz' });
+    set(run, gem + 1, { kind: 'caveIn' });
+    const revealed = tapCell(run, gem).run;
+    // Seek an RNG state whose cave-in picks the gem's cell.
+    for (let s = 0; s < 50; s++) {
+      const r = tapCell({ ...revealed, rngState: s * 7919 }, gem + 1);
+      const caveIn = r.events.find((e) => e.type === 'caveIn');
+      if (caveIn?.type !== 'caveIn' || !caveIn.filled.includes(gem)) continue;
+      expect(r.run.floor.cells[gem]).toMatchObject({ open: false, block: 'dirt', content: { kind: 'none' } });
+      return;
+    }
+    throw new Error('no cave-in covered the gem');
+  });
+
+  it('breaking a crystal with the last energy still runs dry; the crystal waits for an energy refill', () => {
+    const run = blankRun();
+    run.energy = 1;
+    set(run, below(run), { kind: 'crystal' });
+    const r = tapCell(run, below(run));
+    expect(r.run.status).toBe('outOfEnergy');
+    expect(r.run.floor.cells[below(run)].content.kind).toBe('crystal');
+    const resumed = grantAdEnergy(r.run);
+    expect(tapCell(resumed, below(run)).run.energy).toBe(resumed.energy + CONFIG.crystal.energy);
+  });
+
+  it('breaking every block counts the floor as clean even with items still lying around', () => {
+    const run = blankRun();
+    run.energy = 1000;
+    set(run, below(run), { kind: 'gem', tier: 'quartz' });
+    let r = { run, events: [] as RunEvent[] };
+    let cleared = false;
+    for (let pass = 0; pass < run.floor.cells.length && !cleared; pass++) {
+      for (let i = 0; i < r.run.floor.cells.length; i++) {
+        const c = r.run.floor.cells[i];
+        if (c.open) continue;
+        r = tapCell(r.run, i);
+        if (r.events.some((e) => e.type === 'floorCleared')) cleared = true;
+      }
+    }
+    expect(cleared).toBe(true);
+    expect(r.run.floor.cells[below(run)].content.kind).toBe('gem');
   });
 });

@@ -2,7 +2,7 @@ import type { CellHint } from '../game/hints';
 import { toColRow } from '../game/grid';
 import { Rng } from '../game/rng';
 import { GEM_TIERS, type GemTier } from '../config';
-import type { Cell, Floor, RunEvent } from '../game/types';
+import type { Cell, Content, Floor, RunEvent } from '../game/types';
 import { t, tn } from '../i18n';
 import {
   BACKDROP_COLOR,
@@ -54,6 +54,25 @@ interface Puff {
   radius: number;
 }
 
+/** One soft blob of a gas cloud. Position and size come from its start state and age, like particles. */
+interface GasBlob {
+  x: number;
+  y: number;
+  /** Drift, px per second. */
+  vx: number;
+  vy: number;
+  /** Radius at the start and at the end, px. */
+  r0: number;
+  r1: number;
+  color: string;
+  /** Peak opacity. */
+  alpha: number;
+  start: number;
+  duration: number;
+  /** Wobble phase, so blobs don't pulse together. */
+  phase: number;
+}
+
 /** A particle's position is computed from its start state and age (no per-frame integration). */
 interface Particle {
   x: number;
@@ -97,6 +116,9 @@ const MAX_PARTICLES = 400;
 const RUSH_FADE_MS = 250;
 const RUSH_FLASH_MS = 220;
 const RUSH_RESULT_MS = 1600;
+/** A gas cloud lingers, then dissipates (longer than other effects: it's the hazard's main cue). */
+const GAS_CLOUD_MS = 1300;
+const GAS_TONES = ['#9be86b', '#7fd65a', '#b8f08f', '#5fbf3a'];
 
 /** Draws a floor onto a canvas and maps pointer positions back to cells. */
 export class GridRenderer {
@@ -112,6 +134,7 @@ export class GridRenderer {
   private particles: Particle[] = [];
   private pops: Pop[] = [];
   private rings: Ring[] = [];
+  private gasBlobs: GasBlob[] = [];
   private screenShakeAt = -Infinity;
   private screenShakeSize = 6;
   /** The previous floor slides up and out while the new one slides in (floor transition). */
@@ -239,15 +262,20 @@ export class GridRenderer {
           break;
         case 'perkOffer':
           if (e.source === 'chest') {
-            const idx = events.find((x) => x.type === 'break')?.idx;
+            const idx = e.idx ?? events.find((x) => x.type === 'break')?.idx;
             if (idx !== undefined) {
               this.float(floor, idx, t('float.perk'), TREASURE_COLOR, now, 22);
               this.ring(floor, idx, TREASURE_COLOR, now, 1);
             }
           }
           break;
+        case 'perkOfferHeld':
+          // Same cue as a chest perk offer; the choice itself comes when the Rush ends.
+          this.float(floor, e.idx, t('float.perk'), TREASURE_COLOR, now, 22);
+          this.ring(floor, e.idx, TREASURE_COLOR, now, 1);
+          break;
         case 'gas':
-          this.puff(floor, e.idx, e.protection > 0 ? 'rgba(140,200,120,0.3)' : 'rgba(120,220,90,0.6)', now, 1.6);
+          this.gasCloud(floor, e.idx, e.protection, now);
           if (e.energyLost === 0 && e.protection >= 1) this.float(floor, e.idx, t('float.masked'), GAS_COLOR, now);
           else this.float(floor, e.idx, `${e.protection > 0 ? '😷' : ''}−${e.energyLost}⚡`, DAMAGE_COLOR, now);
           break;
@@ -258,6 +286,12 @@ export class GridRenderer {
             this.burst(floor, n, BLOCK_COLORS.dirt.top, now, { count: 6, speed: 60, size: 4, duration: 260, gravity: 900 });
           }
           break;
+        case 'itemRevealed': {
+          const c = e.content;
+          const color = c.kind === 'gem' ? GEM_COLORS[c.tier] : c.kind === 'crystal' ? CRYSTAL_COLOR : TREASURE_COLOR;
+          this.ring(floor, e.idx, color, now, 0.7);
+          break;
+        }
         case 'stairsRevealed':
           this.ring(floor, e.idx, TREASURE_COLOR, now, 1.4);
           this.burst(floor, e.idx, '#ffcf7a', now, { count: 12, speed: 140, size: 4, duration: 280, star: true, gravity: 0 });
@@ -303,6 +337,7 @@ export class GridRenderer {
           this.hitTimes.clear();
           this.floats = [];
           this.puffs = [];
+          this.gasBlobs = [];
           this.particles = [];
           this.pops = [];
           this.rings = [];
@@ -348,6 +383,36 @@ export class GridRenderer {
   private ring(floor: Floor, idx: number, color: string, now: number, scale: number) {
     const { x, y } = this.cellCenter(floor, idx);
     this.rings.push({ x, y, color, start: now, duration: 280, radius: this.cellSize * scale });
+  }
+
+  /**
+   * A green cloud that billows out of the cell, drifts up and dissipates. Each Gas Mask level (`protection`
+   * 0..1) makes it smaller and fainter, down to a thin wisp. Reduced motion: it fades in place.
+   */
+  private gasCloud(floor: Floor, idx: number, protection: number, now: number) {
+    const { x, y } = this.cellCenter(floor, idx);
+    const s = this.cellSize;
+    const strength = 1 - 0.65 * protection;
+    const count = Math.round(6 + 8 * strength);
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const spread = Math.random() * s * 0.35;
+      const speed = this.reducedMotion ? 0 : (30 + Math.random() * 35) * strength;
+      this.gasBlobs.push({
+        x: x + Math.cos(angle) * spread,
+        y: y + Math.sin(angle) * spread,
+        vx: Math.cos(angle) * speed,
+        // Gas rises.
+        vy: Math.sin(angle) * speed - (this.reducedMotion ? 0 : 35 + Math.random() * 25),
+        r0: s * (0.3 + Math.random() * 0.15),
+        r1: s * (0.95 + Math.random() * 0.55) * (0.55 + 0.45 * strength),
+        color: GAS_TONES[i % GAS_TONES.length],
+        alpha: (0.55 + Math.random() * 0.2) * strength,
+        start: now + i * 20,
+        duration: GAS_CLOUD_MS * (0.75 + Math.random() * 0.25),
+        phase: Math.random() * Math.PI * 2,
+      });
+    }
   }
 
   private puff(floor: Floor, idx: number, color: string, now: number, scale = 1) {
@@ -426,6 +491,7 @@ export class GridRenderer {
 
     this.drawPops(now);
     this.drawPuffs(now);
+    this.drawGasBlobs(now);
     this.drawRings(now);
     this.drawParticles(now);
     this.drawFloats(now);
@@ -460,6 +526,10 @@ export class GridRenderer {
       g.addColorStop(1, 'rgba(255,214,150,0)');
       ctx.fillStyle = g;
       ctx.fillRect(x, y, s, s);
+    }
+
+    if (cell.content.kind === 'gem' || cell.content.kind === 'crystal' || cell.content.kind === 'chest') {
+      this.drawItem(cell.content, idx, x, y, s, now);
     }
 
     if (cell.content.kind === 'stairs') {
@@ -583,6 +653,28 @@ export class GridRenderer {
     roundRect(ctx, bx, by, bs, bs, 6);
     ctx.fill();
     ctx.globalAlpha = alpha;
+  }
+
+  /** An item lying in an open cell, waiting to be tapped: a soft glow and a gentle bob. */
+  private drawItem(content: Content, idx: number, x: number, y: number, s: number, now: number) {
+    const ctx = this.ctx;
+    const cx = x + s / 2;
+    // Bob out of phase per cell, so a row of items doesn't move in lockstep. Still with reduced motion.
+    const cy = y + s / 2 + (this.reducedMotion ? 0 : Math.sin(now / 320 + idx) * s * 0.04);
+    const color = content.kind === 'gem' ? GEM_COLORS[content.tier] : content.kind === 'crystal' ? CRYSTAL_COLOR : TREASURE_COLOR;
+    const glow = ctx.createRadialGradient(cx, cy, 1, cx, cy, s * 0.5);
+    glow.addColorStop(0, withAlpha(color, 0.45));
+    glow.addColorStop(1, withAlpha(color, 0));
+    ctx.fillStyle = glow;
+    ctx.fillRect(x, y, s, s);
+    if (content.kind === 'gem') {
+      drawGemIcon(ctx, content.tier, cx, cy, s * 0.26);
+      return;
+    }
+    ctx.font = `${Math.round(s * 0.5)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(content.kind === 'crystal' ? '⚡' : '🧰', cx, cy + 1);
   }
 
   /** Scanner result: a cyan frame and the block's content as an icon (nothing when empty). */
@@ -714,6 +806,33 @@ export class GridRenderer {
     ctx.globalAlpha = 1;
   }
 
+  private drawGasBlobs(now: number) {
+    const ctx = this.ctx;
+    this.gasBlobs = this.gasBlobs.filter((b) => now - b.start < b.duration);
+    for (const b of this.gasBlobs) {
+      const age = now - b.start;
+      if (age < 0) continue;
+      const t = age / b.duration;
+      const sec = age / 1000;
+      // Eases out: billows fast, then slows as it thins.
+      const grow = 1 - (1 - t) ** 3;
+      const r = b.r0 + (b.r1 - b.r0) * grow;
+      const wobble = this.reducedMotion ? 0 : Math.sin(sec * 6 + b.phase) * r * 0.06;
+      const cx = b.x + b.vx * sec + wobble;
+      const cy = b.y + b.vy * sec;
+      // Quick fade in, long fade out.
+      const alpha = b.alpha * Math.min(1, t / 0.12) * (1 - t) ** 1.5;
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+      g.addColorStop(0, withAlpha(b.color, alpha));
+      g.addColorStop(0.55, withAlpha(b.color, alpha * 0.6));
+      g.addColorStop(1, withAlpha(b.color, 0));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
   private drawPops(now: number) {
     const ctx = this.ctx;
     this.pops = this.pops.filter((p) => now - p.start < POP_MS);
@@ -821,4 +940,10 @@ function drawGemIcon(ctx: CanvasRenderingContext2D, tier: GemTier, cx: number, c
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, r);
+}
+
+/** A `#rrggbb` color with an alpha, as `rgba(...)`. */
+function withAlpha(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1, 7), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 }

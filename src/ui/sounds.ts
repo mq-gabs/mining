@@ -102,6 +102,12 @@ export class Sounds {
     }
   }
 
+  /** A block broke open on an item: a soft glint, so the player knows there's something to pick up. */
+  reveal() {
+    this.synth.tone({ freq: 1760, dur: 0.08, type: 'triangle', vol: 0.07, delay: 0.05 });
+    this.synth.tone({ freq: 2349, dur: 0.1, type: 'triangle', vol: 0.05, delay: 0.1 });
+  }
+
   caveIn() {
     this.synth.noise({ dur: 0.55, freq: 400, to: 60, vol: 0.8 });
     this.synth.tone({ freq: 70, to: 30, dur: 0.45, vol: 0.5 });
@@ -203,6 +209,8 @@ export class Sounds {
       if (brk) this.break(brk.block, brk.combo);
       else if (hit) this.hit(block(hit.idx));
     }
+    // Once per action, even when a blast reveals several items.
+    if (events.some((e) => e.type === 'itemRevealed')) this.reveal();
     let dings = 0;
     for (const e of events) {
       switch (e.type) {
@@ -219,7 +227,10 @@ export class Sounds {
           this.chest();
           break;
         case 'perkOffer':
-          if (e.source === 'chest') this.chestPerk();
+          if (e.source === 'chest' && e.idx !== undefined) this.chestPerk();
+          break;
+        case 'perkOfferHeld':
+          this.chestPerk();
           break;
         case 'gas':
           this.gas(e.protection);

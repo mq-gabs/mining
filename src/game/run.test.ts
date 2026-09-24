@@ -82,7 +82,12 @@ describe('tapCell', () => {
     const run = testRun({ gemValueMult: 2 });
     const idx = run.floor.entrance + 1;
     run.floor.cells[idx].content = { kind: 'gem', tier: 'amethyst' };
-    const { run: after, events } = tapCell(run, idx);
+    const broken = tapCell(run, idx);
+    // The break only reveals the gem; a second (free) tap picks it up.
+    expect(broken.run.gems).toBe(0);
+    expect(broken.events).toContainEqual({ type: 'itemRevealed', idx, content: { kind: 'gem', tier: 'amethyst' } });
+    const { run: after, events } = tapCell(broken.run, idx);
+    expect(after.energy).toBe(broken.run.energy);
     expect(after.gems).toBe(10);
     expect(after.floor.cells[idx].content.kind).toBe('none');
     expect(events).toContainEqual({ type: 'gem', idx, tier: 'amethyst', value: 10, doubled: false });

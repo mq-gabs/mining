@@ -33,7 +33,10 @@ export interface Cell {
   block: BlockType;
   hp: number;
   maxHp: number;
-  /** Hidden until the block breaks. Once collected/triggered, becomes `none`. */
+  /**
+   * Hidden until the block breaks. Hazards go off on break; items (gem, crystal, chest) then lie in the open
+   * cell until tapped (`collect`). Once collected/triggered, becomes `none`.
+   */
   content: Content;
   /** The Scanner revealed this block's content without breaking it. */
   scanned?: boolean;
@@ -72,9 +75,9 @@ export interface RushState {
   msLeft: number;
   blocks: number;
   gems: number;
-  /** A floor perk offer came due during the Rush; it's made when the Rush ends. */
-  perkOfferPending?: boolean;
-  /** Energy from floors cleared during the Rush; granted when it ends (a Rush changes nothing but gems). */
+  /** A floor or chest perk offer came due during the Rush; it's made when the Rush ends (at most one). */
+  perkOfferPending?: PerkOfferSource;
+  /** Energy from floors cleared during the Rush; granted when it ends. */
   energyPending?: number;
 }
 
@@ -114,6 +117,8 @@ export type RunEvent =
   | { type: 'freeSwing'; idx: number }
   /** `combo` is the block's number within the current Rush (only during a Rush). */
   | { type: 'break'; idx: number; block: BlockType; combo?: number }
+  /** A break revealed an item; it lies in the open cell until tapped. */
+  | { type: 'itemRevealed'; idx: number; content: Content }
   | { type: 'gem'; idx: number; tier: GemTier; value: number; doubled: boolean }
   | { type: 'crystal'; idx: number; energy: number }
   | { type: 'chest'; idx: number; gems: number }
@@ -122,7 +127,10 @@ export type RunEvent =
   | { type: 'stairsRevealed'; idx: number }
   | { type: 'tool'; tool: ToolId; idx: number; cells: number[] }
   | { type: 'descend'; depth: number; energyRestored: number }
-  | { type: 'perkOffer'; source: PerkOfferSource; choices: PerkId[] }
+  /** `idx`: the chest cell, for a chest offer. */
+  | { type: 'perkOffer'; source: PerkOfferSource; choices: PerkId[]; idx?: number }
+  /** A chest rolled a perk offer during a Rush; it's made when the Rush ends. */
+  | { type: 'perkOfferHeld'; idx: number }
   | { type: 'perkChosen'; perk: PerkId }
   | { type: 'outOfEnergy' }
   /** A pickaxe break added momentum; `level` is the meter after it (0..1). */

@@ -14,7 +14,18 @@ import {
   upgradeCost,
   type Profile,
 } from '../src/game/progression';
-import { canTarget, choosePerk, createRun, endRun, runMultiplier, tapCell, tickRun, toolArea, useTool } from '../src/game/run';
+import {
+  canTarget,
+  choosePerk,
+  createRun,
+  endRun,
+  isCollectible,
+  runMultiplier,
+  tapCell,
+  tickRun,
+  toolArea,
+  useTool,
+} from '../src/game/run';
 import type { Cell, PerkId, RunState, RunSummary, ToolId } from '../src/game/types';
 
 /** Bot's perk preference, best first. */
@@ -84,6 +95,9 @@ function shouldClean(run: RunState, avgCost: number): boolean {
 /** `cleaning`: ignore the stairs and just take the cheapest block until the floor is clear. */
 function pickTarget(run: RunState, rand: Rand, cleaning = false): number | undefined {
   const f = run.floor;
+  // Pick up revealed items first (free, Rush or not).
+  const item = f.cells.findIndex((c) => c.open && isCollectible(c.content));
+  if (item >= 0) return item;
   const stairsOpen = f.cells.findIndex((c) => c.open && c.content.kind === 'stairs');
   if (stairsOpen >= 0 && !(cleaning && !f.cleared)) return stairsOpen;
   const searchRow = f.rows - CONFIG.grid.stairsBottomRows;

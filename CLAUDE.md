@@ -33,7 +33,7 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   effects and follow-up modals (`App.apply`). New feedback/juice should hang off events, not state diffs.
 - All block breaking goes through `breakBlock` in `run.ts` (pickaxe, Tremor, and future tools), so content
   resolution (gems, crystals, chests, hazards, stairs) stays in one place. `BreakOptions` handles per-source
-  differences (e.g. dynamite doesn't trigger gas).
+  differences (e.g. dynamite doesn't trigger gas). Items are picked up separately by `collect` (see Two-step items).
 - Randomness: floors come from `hashSeed(runSeed, depth)`, so they are deterministic per seed. In-run randomness
   (perk procs, cave-ins, perk offers) uses `run.rngState`. Never use `Math.random()` in `src/game/`.
 - Perks are data-driven in `src/game/perks.ts` (`PERKS` table + `PerkId` union); passive perks are checked
@@ -71,7 +71,9 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   Gas costs 12 energy (was 8), and pockets are rarer (max 5%, was 7%), so each one is a real hit. The `gas` event
   carries `protection` (the share blocked, 0..1). The float stays red (`😷−6⚡`) unless the loss is 0 ("masked",
   in green). The sound crossfades from a hiss to a muffled puff, and each mask level plays one step softer than its
-  share, with a quieter, duller puff at 4 stacks (`Sounds.gas`).
+  share, with a quieter, duller puff at 4 stacks (`Sounds.gas`). On the grid a green cloud billows out, rises
+  and dissipates over ~1.3 s (`GridRenderer.gasCloud`, longer than other effects on purpose: it's the hazard's
+  main cue). Each mask level makes it smaller and fainter, down to a thin wisp.
   **Balance, open:** this moved bot run 10 from floor 12.5 to about 9.3 (run 1 unchanged at 4.7), below the bot
   target. The mask change alone accounts for most of it (9.8 with gas still at 8). Levers: gas at 10, or 33% per
   stack (immune at 3).
@@ -82,7 +84,8 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
 - Hints use orthogonal neighbours (same as mining adjacency); cave-ins use the 8-neighbourhood.
 - Tools can only target open cells or blocks the pickaxe could reach, so they can't skip exploration.
   A tool that would affect nothing (e.g. rescanning a known area) is a no-op and keeps its charge.
-- Only one perk offer can be pending: a second perk chest in the same dynamite blast pays out gems instead.
+- Only one perk offer can be pending. Since chests are opened one tap at a time (two-step items), a blast can no
+  longer open two at once; `offerPerk` still refuses a second offer as a safeguard.
 
 ## Rush
 
@@ -95,12 +98,15 @@ to read hints. Tuning lives in `CONFIG.rush` and `CONFIG.music.rush`; tests are 
   Without the decay, a player who one-shots blocks chains Rushes forever and runs never end.
 - **Rush** (`run.rush`): starts the moment the meter is full, even mid-tap. It lasts `durationSec` (5 s, the
   user's choice). During it, taps cost no energy, power is ×`powerMult`, and any closed block can be mined
-  without adjacency. **Only gems change:** gems and chest gems are collected. Crystals, gas and cave-ins do
-  nothing and are lost. Chests never offer a perk. Perks are ignored (Sharp Edge, Tremor, Lucky Strike, Greed,
-  Efficient Swing, Deep Breath; see `powerWithoutPerks` / `gemValueMultWithoutPerks`). A floor perk offer that
-  comes due mid-Rush waits for the Rush to end (`rush.perkOfferPending`), and so does a floor-clear energy
-  refund (`rush.energyPending`). Stairs still work, and the Rush carries
-  over them. Tools work as normal, but their breaks follow the same gems-only rules. The meter doesn't fill.
+  without adjacency. **Breaks** reveal items as usual (two-step, see below); gas and cave-ins do nothing and are
+  lost. Breaking ignores perks (Sharp Edge, Tremor, Efficient Swing; see `powerWithoutPerks`), and Deep Breath is
+  skipped. **Pickups** during a Rush follow the normal rules (the user's choice): crystals give energy, Lucky
+  Strike and Greed apply, and gems count toward `rush.gems`. Perk offers wait for the Rush to end
+  (`rush.perkOfferPending`, the source, at most one): a floor offer that comes due, or a chest that rolls one
+  (`perkOfferHeld` event: the "Perk!" float and jingle now, the choice later). A second chest perk while one is
+  held pays gems, and a floor offer replaces a held chest one. A floor-clear energy refund also waits
+  (`rush.energyPending`). Stairs still work, and the Rush carries over them. Tools work as normal. The meter
+  doesn't fill.
   Energy 0 doesn't end the run during a Rush; when the Rush ends, the normal out-of-energy flow starts (after any
   held perk choice).
 - **Time:** `tickRun(run, dtMs)` is the only clock. It returns the same object when nothing changes. The `App`
@@ -117,7 +123,31 @@ to read hints. Tuning lives in `CONFIG.rush` and `CONFIG.music.rush`; tests are 
   14.5 on run 10, at the top of its target (19.4 on run 10 before gems-only, 11.5 with Rush off). Rushes come every
   4–7 floors. The bot doesn't use the any-block reach, so real players may gain more than the sim shows.
   The gems-only rules are also the balance fix: before them, run 10 overshot to floor 19. The full sim report and
-  next levers to try are in `docs/reports/2026-09-23-rush-balance.md`.
+  next levers to try are in `docs/reports/2026-09-23-rush-balance.md`. (Numbers from before the Gas Mask and
+  two-step changes; see those sections for the current ones. Now that pickups take Rush time, a Rush breaks
+  about 11 blocks instead of 16, and Rush gems are ~5% of the total instead of ~10%.)
+
+## Two-step items
+
+Gems, crystals and chests (`isCollectible`) take two taps: breaking the block reveals the item, which then lies
+in the open cell until tapped. Hazards (gas, cave-in) still go off on break, and stairs were already two-step.
+
+- **Pickup** (`collect` in `run.ts`, reached through `tapCell` on an open item cell): free, no energy. Lucky Strike,
+  Greed and the chest perk roll apply at pickup. A chest perk offer carries the chest's `idx` (for the float).
+- **Events:** a break emits `itemRevealed` (a ring and a soft glint sound, once per action). Pickup emits the usual
+  `gem` / `crystal` / `chest` events, so gem flights and floats work as before. Items are drawn in open cells
+  with a glow and a bob (`GridRenderer.drawItem`; no bob with reduced motion).
+- **Rush:** two-step too. Items can be picked up during a Rush with the normal rules (see the Rush section).
+- **Tools:** blasts only reveal. A tap on an item (or stairs) picks it up even with a tool armed, and the tool
+  stays armed. Tools can't hit open cells, so they never touch lying items.
+- **Side effects (user decisions):** a cave-in that refills a cell destroys the item lying there. Breaking a
+  crystal with the last energy runs the run dry right away; the crystal stays on the floor and can be picked up
+  after the rewarded energy ad. Items left behind when descending or leaving are lost. A floor counts as clean
+  once every block is broken, even with items still lying around.
+- **Sim:** the bot picks up every revealed item first, Rush or not. Each pickup costs a 300 ms tick, so the meter
+  drains more between breaks and a Rush breaks fewer blocks. With two-step in Rush too: run 1 floor 4.7, run 10
+  floor 9.3, ~1.8 Rushes per run by run 10 (2.25 before two-step items). Tests are in `roguelike.test.ts`
+  (`two-step items`) and `rush.test.ts`.
 
 ## Clean floor bonus
 
@@ -160,9 +190,9 @@ clear (a test checks it), or cleaning could pay for itself and runs would never 
 
 ## Testing gotchas
 
-- Dev tools panel: the `devTools` flag shows a 🛠 button (bottom-left, or the ` key) that opens `ui/devPanel.ts`.
+- Dev tools panel: the `devTools` flag shows a 🛠 tab (top centre, or the ` key) that opens `ui/devPanel.ts`.
   Hide it in dev with `?flags=-devTools`. Add manual test tools there as a new `DevSection` (the first one plays the
-  gas sound at each mask level). Its texts are plain English (not player-facing, not translated). Its buttons use
+  gas cloud and sound at each mask level, on the grid when a run is open). Its texts are plain English (not player-facing, not translated). Its buttons use
   `.dev-sfx`, which the global click sound skips.
 - Dev builds expose `window.__deepDig` (`run` get/set, `tap(idx)`, `tool(toolId, idx)`, `tick(ms)`, `hints()`) for
   scripted browser tests. It is not active in production builds.

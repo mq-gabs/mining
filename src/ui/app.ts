@@ -1,6 +1,6 @@
 import { CONFIG, GEM_TIERS, TOOL_IDS, type ToolId, type UpgradeId } from '../config';
 import { isEnabled } from '../flags';
-import { bonusForDepth, clearEnergyForDepth, gemsKept, gemValue } from '../game/economy';
+import { bonusForDepth, clearEnergyForDepth, gasEnergyLoss, gemsKept, gemValue } from '../game/economy';
 import { computeHints } from '../game/hints';
 import { hasPerk, PERKS } from '../game/perks';
 import {
@@ -17,6 +17,7 @@ import {
   createRun,
   endRun,
   grantAdEnergy,
+  isCollectible,
   runMultiplier,
   tapCell,
   tickRun,
@@ -30,7 +31,7 @@ import { ProfileStore, SettingsStore, type Settings } from '../platform/storage'
 import { flyGem, replayClass, showBanner } from './fx';
 import { GridRenderer, type DrawView } from './gridRenderer';
 import { installDevPanel } from './devPanel';
-import { isModalOpen, showModal, type ModalAction } from './modal';
+import { hideModal, isModalOpen, showModal, type ModalAction } from './modal';
 import { renderShop } from './shop';
 import { MusicEngine } from './music';
 import { Sounds } from './sounds';
@@ -96,7 +97,7 @@ export class App {
     this.unlockAudio();
     this.showHub();
     if (import.meta.env.DEV) this.exposeDebugHook();
-    if (isEnabled('devTools')) installDevPanel({ sounds: this.sounds });
+    if (isEnabled('devTools')) installDevPanel({ sounds: this.sounds, previewGas: (p) => this.previewGas(p) });
   }
 
   /** Dev builds only: `window.__deepDig` to inspect state and script taps from the console or tests. */
@@ -116,6 +117,18 @@ export class App {
         hints: () => app.view.hints,
       },
     });
+  }
+
+  /** Dev tools: the gas effect on the middle cell of the open run (no state change). */
+  private previewGas(protection: number): boolean {
+    if (!this.run || $('screen-run').hidden) return false;
+    hideModal();
+    const f = this.run.floor;
+    const idx = Math.floor(f.rows / 2) * f.cols + Math.floor(f.cols / 2);
+    const energyLost = Math.round(gasEnergyLoss(this.run.depth) * (1 - protection));
+    this.renderer.handleEvents(f, [{ type: 'gas', idx, energyLost, protection }], performance.now());
+    this.sounds.gas(protection);
+    return true;
   }
 
   // ---------- Sound ----------
@@ -373,8 +386,9 @@ export class App {
     if (idx === undefined) return;
     this.sounds.synth.unlock();
     const cell = this.run.floor.cells[idx];
-    // Revealed stairs always take you down, even with a tool armed.
-    if (this.armed && !(cell.open && cell.content.kind === 'stairs')) {
+    // Revealed stairs and items always take priority over an armed tool (it stays armed after a pickup).
+    const tapTarget = cell.open && (cell.content.kind === 'stairs' || isCollectible(cell.content));
+    if (this.armed && !tapTarget) {
       const result = useTool(this.run, this.armed, idx);
       if (result.run === this.run) return this.rejectToolTarget();
       this.armed = undefined;

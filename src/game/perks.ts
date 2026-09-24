@@ -93,11 +93,6 @@ export function powerWithoutPerks(run: Pick<RunState, 'perks' | 'mods'>): number
   return run.mods.power - (run.perks.sharpEdge ?? 0) * P.sharpEdge.power;
 }
 
-/** Gem value multiplier without Greed (a Rush ignores perks). */
-export function gemValueMultWithoutPerks(run: Pick<RunState, 'perks' | 'mods'>): number {
-  return run.mods.gemValueMult - (hasPerk(run, 'greed') ? P.greed.gemValueBonus : 0);
-}
-
 /** Share of gas energy loss that gets through the Gas Mask stacks (1 without a mask). */
 export function gasLossFactor(run: Pick<RunState, 'perks'>): number {
   return Math.max(0, 1 - (run.perks.gasMask ?? 0) * P.gasMask.reduction);

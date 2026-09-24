@@ -2,7 +2,7 @@ import { CONFIG } from '../config';
 import { bonusForDepth, cleanMultiplier, clearEnergyForDepth, energyAfterTap, gasEnergyLoss, gemsKept, gemValue } from './economy';
 import { generateFloor } from './floor';
 import { isMinable, neighbors4, neighbors8, rowOf, square } from './grid';
-import { gasLossFactor, gemValueMultWithoutPerks, hasPerk, PERKS, powerWithoutPerks, rollPerkOffer } from './perks';
+import { availablePerks, gasLossFactor, hasPerk, PERKS, powerWithoutPerks, rollPerkOffer } from './perks';
 import { toolChargesFor } from './progression';
 import { hashSeed, Rng } from './rng';
 import type {
@@ -84,6 +84,8 @@ export function tapCell(prev: RunState, idx: number): ActionResult {
 
   // Tapping revealed stairs takes you down (free).
   if (target.open && target.content.kind === 'stairs') return descend(prev);
+  // Tapping a revealed item picks it up (free, normal rules even during a Rush).
+  if (target.open && isCollectible(target.content)) return collect(prev, idx);
   // During a Rush any block can be mined, not just the ones next to an open cell.
   const reachable = prev.rush ? !target.open : isMinable(prev.floor, idx);
   if (!reachable || (prev.energy <= 0 && !prev.rush)) return { run: prev, events: [] };
@@ -189,7 +191,7 @@ function checkCleared(ctx: Ctx) {
   const bonus = bonusForDepth(run.depth);
   run.cleanFloors++;
   run.cleanBonus += bonus;
-  // Energy refund; a Rush changes nothing but gems, so it waits for the Rush to end.
+  // Energy refund; during a Rush it waits for the Rush to end.
   const refund = clearEnergyForDepth(run.depth);
   let energy = 0;
   if (run.rush) run.rush.energyPending = (run.rush.energyPending ?? 0) + refund;
@@ -223,32 +225,16 @@ function openBlock(ctx: Ctx, idx: number, opts: BreakOptions) {
   events.push(rush ? { type: 'break', idx, block, combo: rush.blocks } : { type: 'break', idx, block });
 
   const content = cell.content;
-  if (content.kind !== 'stairs') cell.content = { kind: 'none' };
-  if (rush) return resolveRushContent(ctx, idx, content);
+  // Items stay in the open cell until tapped (`collect`), Rush or not; hazards go off now.
+  if (isCollectible(content)) events.push({ type: 'itemRevealed', idx, content });
+  else if (content.kind !== 'stairs') cell.content = { kind: 'none' };
+  // During a Rush gas and cave-ins do nothing (and are lost), and the meter doesn't fill.
+  if (rush) {
+    if (content.kind === 'stairs') events.push({ type: 'stairsRevealed', idx });
+    return;
+  }
 
   switch (content.kind) {
-    case 'gem': {
-      let value = gemValue(content.tier, run.mods.gemValueMult);
-      const doubled = hasPerk(run, 'luckyStrike') && rng.chance(CONFIG.perks.luckyStrike.chance);
-      if (doubled) value *= 2;
-      run.gems += value;
-      run.stats.gemsByTier[content.tier] = (run.stats.gemsByTier[content.tier] ?? 0) + (doubled ? 2 : 1);
-      events.push({ type: 'gem', idx, tier: content.tier, value, doubled });
-      break;
-    }
-    case 'crystal': {
-      const before = run.energy;
-      run.energy = Math.min(run.mods.maxEnergy, run.energy + CONFIG.crystal.energy);
-      events.push({ type: 'crystal', idx, energy: run.energy - before });
-      break;
-    }
-    case 'chest': {
-      if (rng.chance(CONFIG.chest.perkChance) && offerPerk(ctx, 'chest')) break;
-      const gems = chestGems(run, rng, run.mods.gemValueMult);
-      run.gems += gems;
-      events.push({ type: 'chest', idx, gems });
-      break;
-    }
     case 'gas': {
       if (opts.triggerGas === false) break;
       const factor = gasLossFactor(run);
@@ -260,6 +246,7 @@ function openBlock(ctx: Ctx, idx: number, opts: BreakOptions) {
     case 'caveIn': {
       const candidates = neighbors8(run.floor, idx).filter((n) => {
         const c = run.floor.cells[n];
+        // Items lying in these cells are destroyed with them.
         return c.open && n !== run.floor.entrance && c.content.kind !== 'stairs';
       });
       const filled: number[] = [];
@@ -280,33 +267,68 @@ function openBlock(ctx: Ctx, idx: number, opts: BreakOptions) {
   if (opts.source === 'pickaxe') addMomentum(ctx, idx, momentumFill(run, block));
 }
 
+/** Gems, crystals and chests: revealed by a break, then picked up with a tap. */
+export function isCollectible(content: Content): content is Extract<Content, { kind: 'gem' | 'crystal' | 'chest' }> {
+  return content.kind === 'gem' || content.kind === 'crystal' || content.kind === 'chest';
+}
+
+/**
+ * Picks up the item lying in open cell `idx` (free, no energy). Normal rules apply even during a Rush, except
+ * that a chest's perk offer waits for the Rush to end. Same state if there's nothing to pick up.
+ */
+export function collect(prev: RunState, idx: number): ActionResult {
+  const cell = prev.floor.cells[idx];
+  if (prev.status !== 'playing' || !cell?.open || !isCollectible(cell.content)) {
+    return { run: prev, events: [] };
+  }
+  const ctx = begin(prev);
+  const { run, rng, events } = ctx;
+  const content = run.floor.cells[idx].content;
+  run.floor.cells[idx].content = { kind: 'none' };
+  switch (content.kind) {
+    case 'gem': {
+      let value = gemValue(content.tier, run.mods.gemValueMult);
+      const doubled = hasPerk(run, 'luckyStrike') && rng.chance(CONFIG.perks.luckyStrike.chance);
+      if (doubled) value *= 2;
+      run.gems += value;
+      if (run.rush) run.rush.gems += value;
+      run.stats.gemsByTier[content.tier] = (run.stats.gemsByTier[content.tier] ?? 0) + (doubled ? 2 : 1);
+      events.push({ type: 'gem', idx, tier: content.tier, value, doubled });
+      break;
+    }
+    case 'crystal':
+      events.push({ type: 'crystal', idx, energy: gainEnergy(run, CONFIG.crystal.energy) });
+      break;
+    case 'chest': {
+      if (rng.chance(CONFIG.chest.perkChance) && chestPerk(ctx, idx)) break;
+      const gems = chestGems(run, rng, run.mods.gemValueMult);
+      run.gems += gems;
+      if (run.rush) run.rush.gems += gems;
+      events.push({ type: 'chest', idx, gems });
+      break;
+    }
+  }
+  return finish(ctx);
+}
+
+/**
+ * A chest's perk offer: now, or held until the current Rush ends. Returns false (the chest pays gems
+ * instead) when no offer can be made or one is already held.
+ */
+function chestPerk(ctx: Ctx, idx: number): boolean {
+  const rush = ctx.run.rush;
+  if (!rush) return offerPerk(ctx, 'chest', idx);
+  if (rush.perkOfferPending || availablePerks(ctx.run).length === 0) return false;
+  rush.perkOfferPending = 'chest';
+  ctx.events.push({ type: 'perkOfferHeld', idx });
+  return true;
+}
+
 /** Gems in a chest: a random base plus a depth bonus, times `valueMult`. */
 function chestGems(run: RunState, rng: Rng, valueMult: number): number {
   const c = CONFIG.chest;
   const base = c.gemsMin + rng.int(c.gemsMax - c.gemsMin + 1) + Math.floor(run.depth * c.gemsPerDepth);
   return Math.max(1, Math.round(base * valueMult));
-}
-
-/**
- * During a Rush only gems count: gems and chest gems are collected without perks (no Lucky Strike, Greed or
- * chest perk offers). Crystals, gas and cave-ins do nothing and are lost. Stairs are still revealed.
- */
-function resolveRushContent(ctx: Ctx, idx: number, content: Content) {
-  const { run, rng, events } = ctx;
-  const mult = gemValueMultWithoutPerks(run);
-  let gems = 0;
-  if (content.kind === 'gem') {
-    gems = gemValue(content.tier, mult);
-    run.stats.gemsByTier[content.tier] = (run.stats.gemsByTier[content.tier] ?? 0) + 1;
-    events.push({ type: 'gem', idx, tier: content.tier, value: gems, doubled: false });
-  } else if (content.kind === 'chest') {
-    gems = chestGems(run, rng, mult);
-    events.push({ type: 'chest', idx, gems });
-  } else if (content.kind === 'stairs') {
-    events.push({ type: 'stairsRevealed', idx });
-  }
-  run.gems += gems;
-  run.rush!.gems += gems;
 }
 
 /** Momentum a pickaxe break adds: harder blocks give more, and each Rush this run makes the next slower. */
@@ -356,18 +378,21 @@ export function tickRun(prev: RunState, dtMs: number): ActionResult {
   const energy = gainEnergy(ctx.run, rush.energyPending ?? 0);
   ctx.events.push({ type: 'rushEnd', blocks: rush.blocks, gems: rush.gems, energy });
   // A perk choice pauses the run, so running dry (if energy is 0) waits until the perk is picked.
-  if (rush.perkOfferPending) offerPerk(ctx, 'floor');
+  if (rush.perkOfferPending) offerPerk(ctx, rush.perkOfferPending);
   return finish(ctx);
 }
 
-/** Pauses the run for a perk choice. Returns false if no perks are left or one is already pending. */
-function offerPerk(ctx: Ctx, source: PerkOfferSource): boolean {
+/**
+ * Pauses the run for a perk choice (`idx`: the chest it came from). Returns false if no perks are left or
+ * one is already pending.
+ */
+function offerPerk(ctx: Ctx, source: PerkOfferSource, idx?: number): boolean {
   if (ctx.run.status !== 'playing') return false;
   const choices = rollPerkOffer(ctx.run, ctx.rng);
   if (choices.length === 0) return false;
   ctx.run.status = 'choosingPerk';
   ctx.run.perkOffer = { source, choices };
-  ctx.events.push({ type: 'perkOffer', source, choices });
+  ctx.events.push({ type: 'perkOffer', source, choices, ...(idx !== undefined && { idx }) });
   return true;
 }
 
@@ -377,7 +402,7 @@ export function descend(prev: RunState): ActionResult {
   run.depth++;
   run.floor = generateFloor(run.seed, run.depth, { gemChanceBonus: run.mods.gemChanceBonus });
 
-  // A Rush changes nothing but gems: no Deep Breath, and a floor perk offer waits for the Rush to end.
+  // During a Rush: no Deep Breath, and a floor perk offer waits for the Rush to end.
   let restored = 0;
   if (hasPerk(run, 'deepBreath') && !run.rush) {
     const before = run.energy;
@@ -387,7 +412,8 @@ export function descend(prev: RunState): ActionResult {
   events.push({ type: 'descend', depth: run.depth, energyRestored: restored });
 
   if (run.depth % CONFIG.perks.offerEveryFloors === 0) {
-    if (run.rush) run.rush.perkOfferPending = true;
+    // A held chest offer becomes the floor's (one choice either way).
+    if (run.rush) run.rush.perkOfferPending = 'floor';
     else offerPerk(ctx, 'floor');
   }
   return finish(ctx);

@@ -44,14 +44,15 @@ describe('dynamite', () => {
     expect(r.events[0]).toEqual({ type: 'tool', tool: 'dynamite', idx: center, cells: expected.filter((i) => i !== E(run)) });
   });
 
-  it('does not release gas, but collects gems', () => {
+  it('does not release gas, and reveals gems to pick up', () => {
     const run = blankRun();
     set(run, below(run), { kind: 'gas' });
     set(run, below(run) + 1, { kind: 'gem', tier: 'quartz' });
     const r = useTool(run, 'dynamite', below(run));
     expect(r.run.energy).toBe(run.energy);
     expect(r.events.some((e) => e.type === 'gas')).toBe(false);
-    expect(r.run.gems).toBe(1);
+    expect(r.run.gems).toBe(0);
+    expect(tapCell(r.run, below(run) + 1).run.gems).toBe(1);
   });
 
   it('is a no-op without charges or out of reach', () => {
@@ -61,19 +62,15 @@ describe('dynamite', () => {
     expect(useTool(run, 'dynamite', run.floor.cells.length - 1).run).toBe(run);
   });
 
-  it('two chests in one blast still give a single perk offer', () => {
-    const run = { ...blankRun(), rngState: 1 };
-    // Force every chest roll into a perk offer.
+  it('a blast full of chests opens none of them: each is picked up with its own tap', () => {
+    const run = blankRun();
     const all = run.floor.cells.map((_, i) => i);
     for (const i of all.slice(1, 12)) if (i !== E(run)) set(run, i, { kind: 'chest' });
-    let perkOffers = 0;
-    for (let s = 0; s < 50; s++) {
-      const r = useTool({ ...run, rngState: s * 7919 }, 'dynamite', below(run));
-      const offers = r.events.filter((e) => e.type === 'perkOffer').length;
-      expect(offers).toBeLessThanOrEqual(1);
-      perkOffers += offers;
-    }
-    expect(perkOffers).toBeGreaterThan(0);
+    const r = useTool(run, 'dynamite', below(run));
+    expect(r.events.some((e) => e.type === 'perkOffer' || e.type === 'chest')).toBe(false);
+    const revealed = r.events.filter((e) => e.type === 'itemRevealed');
+    expect(revealed.length).toBeGreaterThan(1);
+    for (const e of revealed) expect(r.run.floor.cells[e.idx].content.kind).toBe('chest');
   });
 });
 

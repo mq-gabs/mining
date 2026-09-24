@@ -10,6 +10,11 @@ import type { Sounds } from './sounds';
  */
 export interface DevContext {
   sounds: Sounds;
+  /**
+   * Plays the gas effect (cloud and sound) on the grid when a run is open, closing the panel so it can be
+   * seen. Returns false with no run open (the caller then plays the sound only).
+   */
+  previewGas: (protection: number) => boolean;
 }
 
 interface DevSection {
@@ -19,9 +24,9 @@ interface DevSection {
   bind: (root: HTMLElement, ctx: DevContext) => void;
 }
 
-/** Gas damage sound at every Gas Mask level (0 = no mask). */
+/** Gas damage effect at every Gas Mask level (0 = no mask): cloud and sound in a run, sound only on the hub. */
 const gasSound: DevSection = {
-  title: 'Gas sound by mask level',
+  title: 'Gas by mask level (in a run: cloud + sound)',
   html: () => {
     const { reduction, maxStacks } = CONFIG.perks.gasMask;
     const loss = gasEnergyLoss(1);
@@ -34,14 +39,15 @@ const gasSound: DevSection = {
     return `<div class="dev-row">${buttons}</div>
       <button class="btn dev-sfx" data-gas-sweep>Play all, one after another</button>`;
   },
-  bind: (root, { sounds }) => {
+  bind: (root, { sounds, previewGas }) => {
+    const play = (protection: number) => previewGas(protection) || sounds.gas(protection);
     for (const btn of root.querySelectorAll<HTMLElement>('[data-protection]')) {
-      btn.addEventListener('click', () => sounds.gas(Number(btn.dataset.protection)));
+      btn.addEventListener('click', () => play(Number(btn.dataset.protection)));
     }
     root.querySelector('[data-gas-sweep]')?.addEventListener('click', () => {
       const { reduction, maxStacks } = CONFIG.perks.gasMask;
       for (let stacks = 0; stacks <= maxStacks; stacks++) {
-        setTimeout(() => sounds.gas(Math.min(1, stacks * reduction)), stacks * 700);
+        setTimeout(() => play(Math.min(1, stacks * reduction)), stacks * 1200);
       }
     });
   },
