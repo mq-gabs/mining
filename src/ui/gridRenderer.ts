@@ -612,7 +612,7 @@ export class GridRenderer {
       }
     } else {
       // Unexposed blocks are dimmed as out of reach, except in a Rush, where any block can be mined.
-      ctx.fillStyle = `rgba(0,0,0,${0.42 * (1 - rushMix)})`;
+      ctx.fillStyle = `rgba(0,0,0,${0.7* (1 - rushMix)})`;
       roundRect(ctx, bx, by, bs, bs, 6);
       ctx.fill();
     }
