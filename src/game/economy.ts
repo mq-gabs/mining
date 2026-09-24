@@ -43,7 +43,7 @@ export function tapsToBreak(hp: number, power: number): number {
   return Math.ceil(hp / Math.max(1, power));
 }
 
-/** Energy a gas pocket takes on this floor (before Gas Mask and the current-energy cap). */
+/** Energy a gas pocket takes on this floor (before Gas Mask stacks and the current-energy cap). */
 export function gasEnergyLoss(depth: number): number {
   const g = CONFIG.hazards.gasEnergyLoss;
   return g.base + Math.floor(depth * g.perDepth);

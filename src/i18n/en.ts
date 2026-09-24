@@ -107,7 +107,7 @@ export const en = {
   'perk.tremor': 'Tremor',
   'perk.tremor.desc': 'Breaking a block deals {n} damage to the blocks next to it.',
   'perk.gasMask': 'Gas Mask',
-  'perk.gasMask.desc': 'Gas pockets are harmless.',
+  'perk.gasMask.desc': 'Gas pockets drain {pct} less energy.',
   'perk.prospector': 'Prospector',
   'perk.prospector.desc': 'Gem sparkles show the color of the gem tier.',
   'perk.efficientSwing': 'Efficient Swing',

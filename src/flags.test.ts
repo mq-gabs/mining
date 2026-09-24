@@ -8,12 +8,12 @@ describe('feature flag overrides', () => {
   });
 
   it('turns flags on and off, last one wins', () => {
-    expect(applyFlagOverrides({ ads: true }, '-ads').ads).toBe(false);
-    expect(applyFlagOverrides({ ads: false }, ' ads ').ads).toBe(true);
-    expect(applyFlagOverrides({ ads: true }, '-ads,ads').ads).toBe(true);
+    expect(applyFlagOverrides({ ...DEFAULT_FLAGS, ads: true }, '-ads').ads).toBe(false);
+    expect(applyFlagOverrides({ ...DEFAULT_FLAGS, ads: false }, ' ads ').ads).toBe(true);
+    expect(applyFlagOverrides({ ...DEFAULT_FLAGS, ads: true }, '-ads,ads').ads).toBe(true);
   });
 
   it('ignores unknown flags', () => {
-    expect(applyFlagOverrides({ ads: true }, 'nope,-other')).toEqual({ ads: true });
+    expect(applyFlagOverrides({ ...DEFAULT_FLAGS, ads: true }, 'nope,-other')).toEqual({ ...DEFAULT_FLAGS, ads: true });
   });
 });

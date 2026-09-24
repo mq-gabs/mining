@@ -2,7 +2,7 @@ import { CONFIG } from '../config';
 import { bonusForDepth, cleanMultiplier, clearEnergyForDepth, energyAfterTap, gasEnergyLoss, gemsKept, gemValue } from './economy';
 import { generateFloor } from './floor';
 import { isMinable, neighbors4, neighbors8, rowOf, square } from './grid';
-import { gemValueMultWithoutPerks, hasPerk, PERKS, powerWithoutPerks, rollPerkOffer } from './perks';
+import { gasLossFactor, gemValueMultWithoutPerks, hasPerk, PERKS, powerWithoutPerks, rollPerkOffer } from './perks';
 import { toolChargesFor } from './progression';
 import { hashSeed, Rng } from './rng';
 import type {
@@ -251,10 +251,10 @@ function openBlock(ctx: Ctx, idx: number, opts: BreakOptions) {
     }
     case 'gas': {
       if (opts.triggerGas === false) break;
-      const masked = hasPerk(run, 'gasMask');
-      const loss = masked ? 0 : Math.min(run.energy, gasEnergyLoss(run.depth));
+      const factor = gasLossFactor(run);
+      const loss = Math.min(run.energy, Math.round(gasEnergyLoss(run.depth) * factor));
       run.energy -= loss;
-      events.push({ type: 'gas', idx, energyLost: loss, masked });
+      events.push({ type: 'gas', idx, energyLost: loss, protection: 1 - factor });
       break;
     }
     case 'caveIn': {

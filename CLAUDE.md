@@ -13,8 +13,9 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   responsive pass (narrow phones, landscape side-by-side layout),
   M6 ads (`AdService` + `MockAdService` in `platform/ads.ts`, behind the `ads` feature flag).
 - All six milestones of the spec are done. Extra: procedural adaptive background music (`ui/music.ts`),
-  Rush (see the Rush section below), the clean floor bonus (see its section below), and
-  language support (English and pt-BR, `src/i18n/`).
+  Rush (see the Rush section below), the clean floor bonus (see its section below),
+  language support (English and pt-BR, `src/i18n/`), stackable Gas Mask (see the deviations below), and a dev tools
+  panel (`ui/devPanel.ts`, behind the `devTools` flag).
 
 ## Commands
 
@@ -58,11 +59,22 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   (masculine, same plural), run = expedição, floor = andar, upgrade = melhoria, Rush stays "Rush".
 - Feature flags live only in `src/flags.ts` (`DEFAULT_FLAGS`, overridable with `VITE_FLAGS` or dev-only `?flags=`).
   Check them with `isEnabled()` in UI/platform code, never in `src/game/` (keep logic flag-free and testable).
-  When `ads` is off, `createAdService()` returns undefined and the UI shows no ad offers.
+  When `ads` is off, `createAdService()` returns undefined and the UI shows no ad offers. `devTools` defaults to
+  `import.meta.env.DEV` (on in dev, off in production builds unless `VITE_FLAGS=devTools`).
 
 ## Deliberate deviations from the spec (keep unless the user says otherwise)
 
-- Stackable perks have `maxStacks` (3 for Sharp Edge and Second Wind). Unlimited Second Wind made runs endless.
+- Stackable perks have `maxStacks` (3 for Sharp Edge and Second Wind, 4 for Gas Mask). Unlimited Second Wind made
+  runs endless.
+- The Gas Mask softens gas instead of blocking it. The spec's mask made gas harmless, which made gas trivial. Each
+  stack cuts the loss by `perks.gasMask.reduction` (25%, `gasLossFactor`), so only all 4 stacks make gas harmless.
+  Gas costs 12 energy (was 8), and pockets are rarer (max 5%, was 7%), so each one is a real hit. The `gas` event
+  carries `protection` (the share blocked, 0..1). The float stays red (`😷−6⚡`) unless the loss is 0 ("masked",
+  in green). The sound crossfades from a hiss to a muffled puff, and each mask level plays one step softer than its
+  share, with a quieter, duller puff at 4 stacks (`Sounds.gas`).
+  **Balance, open:** this moved bot run 10 from floor 12.5 to about 9.3 (run 1 unchanged at 4.7), below the bot
+  target. The mask change alone accounts for most of it (9.8 with gas still at 8). Levers: gas at 10, or 33% per
+  stack (immune at 3).
 - The gem tier distribution is a per-depth `gems.tierMix` table (like `blockMix`). An earlier per-floor
   "decay" multiplier was a no-op because it scaled all tiers equally. Don't reintroduce that pattern.
 - Crystals thin out with depth, and the block mix keeps hardening past floor 16. Both are energy sinks
@@ -143,14 +155,19 @@ clear (a test checks it), or cleaning could pay for itself and runs would never 
 - Longer balance analyses go in `docs/reports/YYYY-MM-DD-<topic>.md` (setup, table, findings, next levers).
   Append an update section when a follow-up change is measured, instead of a new file.
 - Known open issue: upgrades bought per run rise over time instead of slowing down (~1.2 → 5.1 by run 10
-  with the cleaning bot, ~1.2 → 4.0 with Rush and no cleaning, ~0.9 → 2.9 before Rush, with gas at 8 energy; it was ~1.0 → 4.1 with gas at 5, and ~0.8 → 2.7 before M4's tool upgrades).
+  with the cleaning bot, ~1.2 → 4.0 with Rush and no cleaning, ~0.9 → 2.9 before Rush, with gas at 8 energy and an all-blocking Gas Mask. With the stackable mask and gas at 12 it's ~1.0 → 2.3, but runs
+  are shallower; it was ~1.0 → 4.1 with gas at 5, and ~0.8 → 2.7 before M4's tool upgrades).
 
 ## Testing gotchas
 
-- Dev builds expose `window.__deepDig` (`run` get/set, `tap(idx)`, `tool(toolId, idx)`, `tick(ms)`, `hints()`) for scripted browser tests.
+- Dev tools panel: the `devTools` flag shows a 🛠 button (bottom-left, or the ` key) that opens `ui/devPanel.ts`.
+  Hide it in dev with `?flags=-devTools`. Add manual test tools there as a new `DevSection` (the first one plays the
+  gas sound at each mask level). Its texts are plain English (not player-facing, not translated). Its buttons use
+  `.dev-sfx`, which the global click sound skips.
+- Dev builds expose `window.__deepDig` (`run` get/set, `tap(idx)`, `tool(toolId, idx)`, `tick(ms)`, `hints()`) for
+  scripted browser tests. It is not active in production builds.
 - The UI language follows the browser until one is picked, so a Playwright context with a Portuguese locale
   sees pt-BR texts. Set `locale: 'en-US'` on the context when a test matches English text.
-  It is not active in production builds.
 - For browser checks, Playwright lives in the session scratchpad, not in this project. Don't add it as a dependency.
 - Don't `pkill -f vite-node` or `pkill -f vite`: the pattern matches your own shell command and kills it.
   Use a bracket pattern like `pkill -f "[v]ite --port 5199"`, or kill by PID.

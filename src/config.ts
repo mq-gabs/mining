@@ -103,7 +103,7 @@ export const CONFIG = {
   contents: {
     crystal: { fromDepth: 1, base: 0.06, perDepth: -0.002, min: 0.025, max: 0.06 },
     chest: { fromDepth: 1, base: 0.025, perDepth: 0.001, min: 0, max: 0.04 },
-    gas: { fromDepth: 2, base: 0.03, perDepth: 0.004, min: 0, max: 0.07 },
+    gas: { fromDepth: 2, base: 0.025, perDepth: 0.0025, min: 0, max: 0.05 },
     caveIn: { fromDepth: 2, base: 0.02, perDepth: 0.004, min: 0, max: 0.06 },
   } satisfies Record<string, { fromDepth: number; base: number; perDepth: number; min: number; max: number }>,
 
@@ -118,7 +118,7 @@ export const CONFIG = {
   },
   hazards: {
     /** Gas energy loss = base + floor(depth * perDepth), so it keeps biting as max energy grows. */
-    gasEnergyLoss: { base: 8, perDepth: 0 },
+    gasEnergyLoss: { base: 12, perDepth: 0 },
     /** Max open cells (8-neighbourhood of the cave-in) turned back into dirt. */
     caveInCells: 3,
   },
@@ -246,6 +246,8 @@ export const CONFIG = {
     /** Stackable perks can be taken up to `maxStacks` times per run. */
     sharpEdge: { power: 1, maxStacks: 3 },
     secondWind: { energy: 15, maxStacks: 3 },
+    /** Each Gas Mask stack cuts gas energy loss by `reduction`; all 4 stacks make gas harmless. */
+    gasMask: { reduction: 0.25, maxStacks: 4 },
     luckyStrike: { chance: 0.2 },
     tremor: { damage: 1 },
     efficientSwing: { chance: 0.15 },

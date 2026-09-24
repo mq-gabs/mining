@@ -51,7 +51,8 @@ export const PERKS: Record<PerkId, PerkDef> = {
   gasMask: {
     id: 'gasMask',
     icon: '😷',
-    stackable: false,
+    stackable: true,
+    maxStacks: P.gasMask.maxStacks,
   },
   prospector: {
     id: 'prospector',
@@ -95,6 +96,11 @@ export function powerWithoutPerks(run: Pick<RunState, 'perks' | 'mods'>): number
 /** Gem value multiplier without Greed (a Rush ignores perks). */
 export function gemValueMultWithoutPerks(run: Pick<RunState, 'perks' | 'mods'>): number {
   return run.mods.gemValueMult - (hasPerk(run, 'greed') ? P.greed.gemValueBonus : 0);
+}
+
+/** Share of gas energy loss that gets through the Gas Mask stacks (1 without a mask). */
+export function gasLossFactor(run: Pick<RunState, 'perks'>): number {
+  return Math.max(0, 1 - (run.perks.gasMask ?? 0) * P.gasMask.reduction);
 }
 
 export function hasPerk(run: Pick<RunState, 'perks'>, id: PerkId): boolean {

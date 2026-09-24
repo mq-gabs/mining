@@ -247,9 +247,9 @@ export class GridRenderer {
           }
           break;
         case 'gas':
-          this.puff(floor, e.idx, e.masked ? 'rgba(140,200,120,0.3)' : 'rgba(120,220,90,0.6)', now, 1.6);
-          if (e.masked) this.float(floor, e.idx, t('float.masked'), GAS_COLOR, now);
-          else this.float(floor, e.idx, `−${e.energyLost}⚡`, DAMAGE_COLOR, now);
+          this.puff(floor, e.idx, e.protection > 0 ? 'rgba(140,200,120,0.3)' : 'rgba(120,220,90,0.6)', now, 1.6);
+          if (e.energyLost === 0 && e.protection >= 1) this.float(floor, e.idx, t('float.masked'), GAS_COLOR, now);
+          else this.float(floor, e.idx, `${e.protection > 0 ? '😷' : ''}−${e.energyLost}⚡`, DAMAGE_COLOR, now);
           break;
         case 'caveIn':
           this.shake(now, 6);

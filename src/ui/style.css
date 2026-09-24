@@ -1116,3 +1116,32 @@ body {
     align-self: end;
   }
 }
+
+/* ---------- Dev tools (dev builds only, see ui/devPanel.ts) ---------- */
+.dev-fab {
+  position: fixed;
+  left: 8px;
+  bottom: 8px;
+  z-index: 5;
+  opacity: 0.6;
+}
+.dev-section {
+  margin-top: 12px;
+  text-align: left;
+}
+.dev-section h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+.dev-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.dev-row .btn {
+  padding: 0 8px;
+}
+.dev-section > .btn {
+  width: 100%;
+}

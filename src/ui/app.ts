@@ -1,4 +1,5 @@
 import { CONFIG, GEM_TIERS, TOOL_IDS, type ToolId, type UpgradeId } from '../config';
+import { isEnabled } from '../flags';
 import { bonusForDepth, clearEnergyForDepth, gemsKept, gemValue } from '../game/economy';
 import { computeHints } from '../game/hints';
 import { hasPerk, PERKS } from '../game/perks';
@@ -28,6 +29,7 @@ import { createAdService, type AdService } from '../platform/ads';
 import { ProfileStore, SettingsStore, type Settings } from '../platform/storage';
 import { flyGem, replayClass, showBanner } from './fx';
 import { GridRenderer, type DrawView } from './gridRenderer';
+import { installDevPanel } from './devPanel';
 import { isModalOpen, showModal, type ModalAction } from './modal';
 import { renderShop } from './shop';
 import { MusicEngine } from './music';
@@ -84,7 +86,7 @@ export class App {
     // Generic click for plain buttons (buying, perks, tools and mute have their own sounds).
     document.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest('.btn');
-      if (btn && !btn.matches('.buy-btn, .perk-confirm')) this.sounds.click();
+      if (btn && !btn.matches('.buy-btn, .perk-confirm, .dev-sfx')) this.sounds.click();
     });
     this.applySoundSettings();
     this.applyLocale();
@@ -94,6 +96,7 @@ export class App {
     this.unlockAudio();
     this.showHub();
     if (import.meta.env.DEV) this.exposeDebugHook();
+    if (isEnabled('devTools')) installDevPanel({ sounds: this.sounds });
   }
 
   /** Dev builds only: `window.__deepDig` to inspect state and script taps from the console or tests. */

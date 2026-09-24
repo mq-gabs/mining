@@ -117,7 +117,7 @@ export type RunEvent =
   | { type: 'gem'; idx: number; tier: GemTier; value: number; doubled: boolean }
   | { type: 'crystal'; idx: number; energy: number }
   | { type: 'chest'; idx: number; gems: number }
-  | { type: 'gas'; idx: number; energyLost: number; masked: boolean }
+  | { type: 'gas'; idx: number; energyLost: number; /** Share of the loss the Gas Mask stacks blocked (0..1). */ protection: number }
   | { type: 'caveIn'; idx: number; filled: number[] }
   | { type: 'stairsRevealed'; idx: number }
   | { type: 'tool'; tool: ToolId; idx: number; cells: number[] }

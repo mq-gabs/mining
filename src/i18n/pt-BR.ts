@@ -106,7 +106,7 @@ export const ptBR: Record<MessageKey, string> = {
   'perk.tremor': 'Tremor',
   'perk.tremor.desc': 'Quebrar um bloco causa {n} de dano nos blocos vizinhos.',
   'perk.gasMask': 'Máscara de Gás',
-  'perk.gasMask.desc': 'Bolsões de gás não fazem mal.',
+  'perk.gasMask.desc': 'Bolsões de gás drenam {pct} menos energia.',
   'perk.prospector': 'Garimpeiro',
   'perk.prospector.desc': 'O brilho mostra a cor do tipo de gema.',
   'perk.efficientSwing': 'Golpe Eficiente',

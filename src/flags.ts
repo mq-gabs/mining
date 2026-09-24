@@ -9,11 +9,13 @@
  * Both overrides take a comma-separated list: `name` turns a flag on, `-name` turns it off.
  */
 
-export type FlagName = 'ads';
+export type FlagName = 'ads' | 'devTools';
 
 export const DEFAULT_FLAGS: Readonly<Record<FlagName, boolean>> = {
   /** Rewarded ads (energy refill, gem doubling) and interstitials, via `AdService`. */
   ads: true,
+  /** The 🛠 dev tools panel (`ui/devPanel.ts`). On in dev builds, off in production unless `VITE_FLAGS=devTools`. */
+  devTools: import.meta.env.DEV,
 };
 
 const FLAG_NAMES = Object.keys(DEFAULT_FLAGS) as FlagName[];

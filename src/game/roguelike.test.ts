@@ -57,15 +57,32 @@ describe('pickups and hazards', () => {
     expect(tapCell(full, E(full) + 1).run.energy).toBe(full.mods.maxEnergy);
   });
 
-  it('gas pocket drains energy unless wearing a gas mask', () => {
+  it('gas pocket drains energy; each Gas Mask stack softens it, and a full set cancels it', () => {
     const run = blankRun();
     set(run, below(run), { kind: 'gas' });
     expect(tapCell(run, below(run)).run.energy).toBe(run.energy - 1 - gasEnergyLoss(run.depth));
-    const masked = blankRun(['gasMask']);
-    set(masked, below(masked), { kind: 'gas' });
-    const r = tapCell(masked, below(masked));
-    expect(r.run.energy).toBe(masked.energy - 1);
-    expect(r.events).toContainEqual({ type: 'gas', idx: below(masked), energyLost: 0, masked: true });
+    const { reduction, maxStacks } = CONFIG.perks.gasMask;
+    let prev = gasEnergyLoss(run.depth);
+    for (let stacks = 1; stacks <= maxStacks; stacks++) {
+      const masked = blankRun();
+      masked.perks.gasMask = stacks;
+      set(masked, below(masked), { kind: 'gas' });
+      const r = tapCell(masked, below(masked));
+      const loss = Math.round(gasEnergyLoss(masked.depth) * (1 - stacks * reduction));
+      expect(loss).toBeLessThan(prev);
+      if (stacks === maxStacks) expect(loss).toBe(0);
+      expect(r.run.energy).toBe(masked.energy - 1 - loss);
+      expect(r.events).toContainEqual({ type: 'gas', idx: below(masked), energyLost: loss, protection: stacks * reduction });
+      prev = loss;
+    }
+  });
+
+  it('Gas Mask stacks up to maxStacks', () => {
+    const run = blankRun();
+    run.perks.gasMask = CONFIG.perks.gasMask.maxStacks - 1;
+    expect(availablePerks(run)).toContain('gasMask');
+    run.perks.gasMask = CONFIG.perks.gasMask.maxStacks;
+    expect(availablePerks(run)).not.toContain('gasMask');
   });
 
   it('gas can knock you out of energy', () => {

@@ -30,6 +30,7 @@ export function perkDescription(id: PerkId): string {
     case 'greed':
       return t('perk.greed.desc', { pct: fmtPct(P.greed.gemValueBonus), n: P.greed.maxEnergyPenalty });
     case 'gasMask':
+      return t('perk.gasMask.desc', { pct: fmtPct(P.gasMask.reduction) });
     case 'prospector':
     case 'treasureSense':
       return t(`perk.${id}.desc` as const);

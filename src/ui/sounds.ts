@@ -1,4 +1,4 @@
-import { GEM_TIERS, type BlockType, type GemTier, type ToolId } from '../config';
+import { CONFIG, GEM_TIERS, type BlockType, type GemTier, type ToolId } from '../config';
 import type { RunEvent, RunState } from '../game/types';
 import { Synth } from '../platform/audio';
 
@@ -82,9 +82,24 @@ export class Sounds {
     arpeggio(this.synth, [523, 659, 784, 1047, 1319], 0.05, 'triangle', 0.15, 0.25);
   }
 
-  gas(masked: boolean) {
-    if (masked) this.synth.noise({ dur: 0.3, freq: 700, vol: 0.12 });
-    else this.synth.noise({ dur: 0.45, filter: 'highpass', freq: 2500, to: 5000, vol: 0.3 });
+  /**
+   * Crossfades from a sharp hiss (no mask) to a muffled puff by `protection` (0..1). Any mask sounds one
+   * step softer than its share, so the first mask is already a clear relief, and a full set goes past the
+   * plain puff to a quieter, duller one.
+   */
+  gas(protection: number) {
+    const step = CONFIG.perks.gasMask.reduction;
+    const soft = protection > 0 ? protection + step : 0;
+    const hiss = Math.max(0, 1 - soft);
+    /** 0..1 over the step past a plain puff. */
+    const extra = Math.min(1, Math.max(0, soft - 1) / step);
+    if (hiss > 0) {
+      this.synth.noise({ dur: 0.3 + 0.15 * hiss, filter: 'highpass', freq: 2500, to: 2500 + 2500 * hiss, vol: 0.3 * hiss });
+    }
+    if (soft > 0) {
+      const vol = 0.12 * Math.min(1, soft) * (1 - 0.45 * extra);
+      this.synth.noise({ dur: 0.3 - 0.05 * extra, freq: 700 - 250 * extra, vol });
+    }
   }
 
   caveIn() {
@@ -207,7 +222,7 @@ export class Sounds {
           if (e.source === 'chest') this.chestPerk();
           break;
         case 'gas':
-          this.gas(e.masked);
+          this.gas(e.protection);
           break;
         case 'momentum':
           this.momentum(e.level);
