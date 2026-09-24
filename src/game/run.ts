@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import { energyAfterTap, gasEnergyLoss, gemsKept, gemValue } from './economy';
+import { bonusForDepth, cleanMultiplier, clearEnergyForDepth, energyAfterTap, gasEnergyLoss, gemsKept, gemValue } from './economy';
 import { generateFloor } from './floor';
 import { isMinable, neighbors4, neighbors8, rowOf, square } from './grid';
 import { gemValueMultWithoutPerks, hasPerk, PERKS, powerWithoutPerks, rollPerkOffer } from './perks';
@@ -45,6 +45,8 @@ export function createRun(seed: number, mods: RunModifiers = defaultModifiers())
     gems: 0,
     perks: {},
     energyAdUsed: false,
+    cleanFloors: 0,
+    cleanBonus: 0,
     momentum: 0,
     rngState: hashSeed(seed, 0x5eed),
     status: 'playing',
@@ -173,6 +175,43 @@ interface BreakOptions {
 
 /** Opens a block and resolves its content. Used by the pickaxe, tremor, and tools. */
 function breakBlock(ctx: Ctx, idx: number, opts: BreakOptions) {
+  openBlock(ctx, idx, opts);
+  // After the content resolved, so a cave-in that refilled cells means the floor isn't clean yet.
+  checkCleared(ctx);
+}
+
+/** Counts the floor as clean (once) when no closed block is left on it. */
+function checkCleared(ctx: Ctx) {
+  const { run } = ctx;
+  const floor = run.floor;
+  if (floor.cleared || floor.cells.some((c) => !c.open)) return;
+  floor.cleared = true;
+  const bonus = bonusForDepth(run.depth);
+  run.cleanFloors++;
+  run.cleanBonus += bonus;
+  // Energy refund; a Rush changes nothing but gems, so it waits for the Rush to end.
+  const refund = clearEnergyForDepth(run.depth);
+  let energy = 0;
+  if (run.rush) run.rush.energyPending = (run.rush.energyPending ?? 0) + refund;
+  else energy = gainEnergy(run, refund);
+  ctx.events.push({
+    type: 'floorCleared',
+    depth: run.depth,
+    bonus,
+    multiplier: cleanMultiplier(run.cleanBonus),
+    energy,
+    energyPending: run.rush ? refund : 0,
+  });
+}
+
+/** Adds energy up to max energy. Returns what was actually gained. */
+function gainEnergy(run: RunState, amount: number): number {
+  const before = run.energy;
+  run.energy = Math.min(run.mods.maxEnergy, run.energy + amount);
+  return run.energy - before;
+}
+
+function openBlock(ctx: Ctx, idx: number, opts: BreakOptions) {
   const { run, rng, events } = ctx;
   const cell = run.floor.cells[idx];
   const block = cell.block;
@@ -314,7 +353,8 @@ export function tickRun(prev: RunState, dtMs: number): ActionResult {
   const ctx = begin(prev);
   ctx.run.rush = undefined;
   ctx.run.momentum = 0;
-  ctx.events.push({ type: 'rushEnd', blocks: rush.blocks, gems: rush.gems });
+  const energy = gainEnergy(ctx.run, rush.energyPending ?? 0);
+  ctx.events.push({ type: 'rushEnd', blocks: rush.blocks, gems: rush.gems, energy });
   // A perk choice pauses the run, so running dry (if energy is 0) waits until the perk is picked.
   if (rush.perkOfferPending) offerPerk(ctx, 'floor');
   return finish(ctx);
@@ -387,8 +427,15 @@ export function addEnergy(prev: RunState, amount: number): RunState {
   return run;
 }
 
+/** The run's clean floor gem multiplier (1 with no clean floors). */
+export function runMultiplier(run: RunState): number {
+  return cleanMultiplier(run.cleanBonus);
+}
+
 export function endRun(prev: RunState, reason: EndReason): { run: RunState; summary: RunSummary } {
   const run = { ...prev, status: 'ended' as const };
+  const multiplier = runMultiplier(run);
+  const kept = gemsKept(run.gems, reason, multiplier);
   return {
     run,
     summary: {
@@ -396,7 +443,10 @@ export function endRun(prev: RunState, reason: EndReason): { run: RunState; summ
       reason,
       depth: run.depth,
       gemsFound: run.gems,
-      gemsKept: gemsKept(run.gems, reason),
+      gemsKept: kept,
+      cleanFloors: run.cleanFloors,
+      multiplier,
+      bonusGems: kept - gemsKept(run.gems, reason),
       blocksBroken: run.stats.blocksBroken,
       gemsByTier: { ...run.stats.gemsByTier },
     },

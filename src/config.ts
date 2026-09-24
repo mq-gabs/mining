@@ -129,6 +129,27 @@ export const CONFIG = {
   },
 
   /**
+   * Clean floor bonus: breaking every block on a floor adds `perFloorBase + perDepth * (depth - 1)` to a run
+   * multiplier on the gems paid out at the end (before the exhausted penalty). Deeper floors are worth more:
+   * floor 1 is cheap to clean (dirt, and a Rush can mine any block), deep floors cost far more energy.
+   */
+  cleanBonus: {
+    perFloorBase: 0.02,
+    perDepth: 0.01,
+    /** The run multiplier never goes above this. */
+    maxMult: 1.5,
+    /**
+     * Energy refunded for clearing a floor: `energyBase + energyPerDepth * (depth - 1)`, at most `energyMax`
+     * (and never above max energy). Clearing costs about 3 floors of energy; with the refund, cleaning and diving
+     * earn about the same gems in the sim. `energyMax` stays below the ~60 blocks a floor costs to clear, so
+     * cleaning can never pay for itself and make a run endless.
+     */
+    energyBase: 15,
+    energyPerDepth: 1.5,
+    energyMax: 40,
+  },
+
+  /**
    * Rush: pickaxe breaks fill a momentum meter (0..1) that always drains. When it's full, a Rush starts:
    * for `durationSec` taps are free and the pickaxe hits harder. Both carry over between floors.
    */

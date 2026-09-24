@@ -12,7 +12,7 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   responsive pass (narrow phones, landscape side-by-side layout),
   M6 ads (`AdService` + `MockAdService` in `platform/ads.ts`, behind the `ads` feature flag).
 - All six milestones of the spec are done. Extra: procedural adaptive background music (`ui/music.ts`),
-  and Rush (see the Rush section below).
+  Rush (see the Rush section below), and the clean floor bonus (spec: `docs/specs/clean-floor-bonus.md`).
 
 ## Commands
 
@@ -77,7 +77,8 @@ to read hints. Tuning lives in `CONFIG.rush` and `CONFIG.music.rush`; tests are 
   without adjacency. **Only gems change:** gems and chest gems are collected. Crystals, gas and cave-ins do
   nothing and are lost. Chests never offer a perk. Perks are ignored (Sharp Edge, Tremor, Lucky Strike, Greed,
   Efficient Swing, Deep Breath; see `powerWithoutPerks` / `gemValueMultWithoutPerks`). A floor perk offer that
-  comes due mid-Rush waits for the Rush to end (`rush.perkOfferPending`). Stairs still work, and the Rush carries
+  comes due mid-Rush waits for the Rush to end (`rush.perkOfferPending`), and so does a floor-clear energy
+  refund (`rush.energyPending`). Stairs still work, and the Rush carries
   over them. Tools work as normal, but their breaks follow the same gems-only rules. The meter doesn't fill.
   Energy 0 doesn't end the run during a Rush; when the Rush ends, the normal out-of-energy flow starts (after any
   held perk choice).
@@ -97,17 +98,43 @@ to read hints. Tuning lives in `CONFIG.rush` and `CONFIG.music.rush`; tests are 
   The gems-only rules are also the balance fix: before them, run 10 overshot to floor 19. The full sim report and
   next levers to try are in `docs/reports/2026-09-23-rush-balance.md`.
 
+## Clean floor bonus
+
+Breaking every block on a floor adds `bonusForDepth(depth)` (deeper is worth more) to `run.cleanBonus`. The
+run multiplier `cleanMultiplier` (capped at `cleanBonus.maxMult` = 1.5) applies to the gems kept, before the
+exhausted penalty (`gemsKept(gems, reason, multiplier)`). `checkCleared` runs at the end of `breakBlock` for
+every breaking source, after content resolves, so cave-in refills block it. `Floor.cleared` makes it count once.
+There's no "blocks left" counter (a user decision). Clearing a floor also refunds energy
+(`clearEnergyForDepth`: 15 + 1.5 per floor, at most `energyMax` 40). During a Rush the refund is held in
+`rush.energyPending` and paid when the Rush ends. `energyMax` must stay below the ~60 blocks a floor costs to
+clear (a test checks it), or cleaning could pay for itself and runs would never end.
+
+- **UI:** a `floorCleared` event (bonus, new multiplier, energy now or pending) drives the "Floor cleared!"
+  banner (`.floor-banner.long`, which wraps on narrow phones), a sound and a sparkle. The `🧹 ×1.12` HUD chip shows
+  once a floor is clean; tapping it explains the rule. The leave and out-of-energy modals and the summary
+  (`cleanFloors`, `multiplier`, `bonusGems`) show gems after the multiplier. Tests are in `clean.test.ts`.
+
+- **Sim:** `SIM_CLEAN` picks the bot's policy: `deep` (the default: clean any affordable floor from
+  `SIM_CLEAN_MIN_DEPTH` = 6), `all`, `leave` (only the floor it leaves from, which in practice never happens), or
+  `none` (the pure-diving baseline).
+- **Balance:** without the refund, cleaning was a net loss (run 10: 460–590 gems against 980 for diving).
+  With it, cleaning is a fair trade. Cleaning bots end run 10 about 1.5–3 floors shallower (11.7–13.2, against
+  14.5) with about the same or more gems (1000–1500, against 980). Double the refund made cleaning dominant
+  (about 2800). Gems kept swing ±30–50% between nearly identical settings, because careers compound, so
+  compare depth and trends, not single gem numbers.
+
 ## Balance workflow
 
 - Targets: first run reaches floor 3–4; by run 10, floor 10–12; an upgrade is affordable after almost
   every early run, slowing later. The sim bot plays near-perfectly, so aim the bot about 1–2 floors *above* the
-  human targets.
+  human targets. The bot cleans floors by default (`SIM_CLEAN=deep`), which costs it some depth. Compare
+  against `SIM_CLEAN=none` when a change isn't about cleaning.
 - After any change to mechanics or config, rerun the sim and report the table. A test in `roguelike.test.ts`
   asserts that a maxed-out player still runs out of energy. Keep it passing.
 - Longer balance analyses go in `docs/reports/YYYY-MM-DD-<topic>.md` (setup, table, findings, next levers).
   Append an update section when a follow-up change is measured, instead of a new file.
-- Known open issue: upgrades bought per run rise over time instead of slowing down (~1.2 → 4.0 by run 10
-  with Rush, ~0.9 → 2.9 before it, with gas at 8 energy; it was ~1.0 → 4.1 with gas at 5, and ~0.8 → 2.7 before M4's tool upgrades).
+- Known open issue: upgrades bought per run rise over time instead of slowing down (~1.2 → 5.1 by run 10
+  with the cleaning bot, ~1.2 → 4.0 with Rush and no cleaning, ~0.9 → 2.9 before Rush, with gas at 8 energy; it was ~1.0 → 4.1 with gas at 5, and ~0.8 → 2.7 before M4's tool upgrades).
 
 ## Testing gotchas
 

@@ -6,10 +6,31 @@ export function gemValue(tier: GemTier, valueMult = 1): number {
   return Math.max(1, Math.round(CONFIG.gems.tiers[tier].value * valueMult));
 }
 
-/** Gems the player keeps at the end of a run. */
-export function gemsKept(runGems: number, reason: EndReason): number {
-  if (reason === 'left') return runGems;
-  return Math.floor(runGems * CONFIG.run.exhaustedKeepRatio);
+/**
+ * Gems the player keeps at the end of a run. The clean floor `multiplier` applies first (rounded), then the
+ * exhausted penalty.
+ */
+export function gemsKept(runGems: number, reason: EndReason, multiplier = 1): number {
+  const total = Math.round(runGems * multiplier);
+  if (reason === 'left') return total;
+  return Math.floor(total * CONFIG.run.exhaustedKeepRatio);
+}
+
+/** Multiplier bonus for cleaning a floor at `depth`: deeper floors are worth more. */
+export function bonusForDepth(depth: number): number {
+  const c = CONFIG.cleanBonus;
+  return c.perFloorBase + c.perDepth * (Math.max(1, depth) - 1);
+}
+
+/** Energy refunded for clearing a floor at `depth` (before the max energy cap). */
+export function clearEnergyForDepth(depth: number): number {
+  const c = CONFIG.cleanBonus;
+  return Math.min(c.energyMax, Math.round(c.energyBase + c.energyPerDepth * (Math.max(1, depth) - 1)));
+}
+
+/** The run's gem multiplier from the summed clean floor bonuses, capped at `maxMult`. */
+export function cleanMultiplier(cleanBonus: number): number {
+  return Math.min(CONFIG.cleanBonus.maxMult, 1 + cleanBonus);
 }
 
 /** Energy after a tap. Never negative. */

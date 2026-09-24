@@ -373,6 +373,28 @@ body {
   font-weight: 700;
   font-size: 18px;
 }
+.hud-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Clean floor multiplier. */
+.clean-chip {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 210, 74, 0.45);
+  border-radius: 999px;
+  background: rgba(255, 210, 74, 0.12);
+  color: #ffd24a;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.clean-chip.bump {
+  animation: bump 260ms ease-out;
+}
 .hud-right {
   display: inline-flex;
   align-items: center;
@@ -583,6 +605,14 @@ body {
   pointer-events: none;
   opacity: 0;
   transform: translate(-50%, -50%);
+}
+.floor-banner.long {
+  /* "Floor cleared! +16% · ×1.5 (max)" can wrap on narrow phones instead of overflowing. */
+  width: max-content;
+  max-width: calc(100% - 24px);
+  font-size: 20px;
+  white-space: normal;
+  text-align: center;
 }
 .floor-banner.show {
   animation: banner 900ms ease-out;

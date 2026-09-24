@@ -28,7 +28,7 @@ describe('rewarded energy ad', () => {
 });
 
 describe('gem doubling ad', () => {
-  const summary: RunSummary = { seed: 1, reason: 'exhausted', depth: 3, gemsFound: 30, gemsKept: 15, blocksBroken: 9, gemsByTier: {} };
+  const summary: RunSummary = { seed: 1, reason: 'exhausted', depth: 3, gemsFound: 30, gemsKept: 15, cleanFloors: 0, multiplier: 1, bonusGems: 0, blocksBroken: 9, gemsByTier: {} };
 
   it('multiplies the gems kept on top of the already-applied run result, once', () => {
     const applied = applyRunResult({ ...newProfile(), gems: 100 }, summary).profile;

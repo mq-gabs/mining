@@ -47,6 +47,8 @@ export interface Floor {
   /** Row-major: index = row * cols + col. */
   cells: Cell[];
   entrance: number;
+  /** Every block has been broken (counted once for the clean floor bonus). */
+  cleared?: boolean;
 }
 
 /** Stats that come from permanent upgrades and in-run perks. */
@@ -72,6 +74,8 @@ export interface RushState {
   gems: number;
   /** A floor perk offer came due during the Rush; it's made when the Rush ends. */
   perkOfferPending?: boolean;
+  /** Energy from floors cleared during the Rush; granted when it ends (a Rush changes nothing but gems). */
+  energyPending?: number;
 }
 
 export interface RunState {
@@ -90,6 +94,9 @@ export interface RunState {
   perkOffer?: { source: PerkOfferSource; choices: PerkId[] };
   /** The out-of-energy rewarded ad was already used this run (it's once per run). */
   energyAdUsed: boolean;
+  /** Floors cleaned this run, and the sum of their bonuses (uncapped; see `cleanMultiplier`). */
+  cleanFloors: number;
+  cleanBonus: number;
   /** Rush meter, 0..1. Filled by pickaxe breaks, drained over time by `tickRun`. */
   momentum: number;
   /** Present while a Rush is active. */
@@ -121,7 +128,13 @@ export type RunEvent =
   /** A pickaxe break added momentum; `level` is the meter after it (0..1). */
   | { type: 'momentum'; idx: number; level: number }
   | { type: 'rushStart'; idx: number }
-  | { type: 'rushEnd'; blocks: number; gems: number };
+  /** `energy`: refunds from floors cleared during the Rush, granted now. */
+  | { type: 'rushEnd'; blocks: number; gems: number; energy: number }
+  /**
+   * The floor's last block broke. `bonus` is what it added; `multiplier` is the run's new (capped) one.
+   * `energy` is the refund granted now; `energyPending` is held until the current Rush ends.
+   */
+  | { type: 'floorCleared'; depth: number; bonus: number; multiplier: number; energy: number; energyPending: number }
 
 export interface RunSummary {
   seed: number;
@@ -131,6 +144,10 @@ export interface RunSummary {
   depth: number;
   gemsFound: number;
   gemsKept: number;
+  /** Clean floor bonus: floors cleaned, the multiplier, and the gems it added to `gemsKept`. */
+  cleanFloors: number;
+  multiplier: number;
+  bonusGems: number;
   blocksBroken: number;
   gemsByTier: Partial<Record<GemTier, number>>;
 }

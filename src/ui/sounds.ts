@@ -44,6 +44,12 @@ export class Sounds {
     for (const freq of [880, 1109, 1319, 1760]) this.synth.tone({ freq, dur: 0.35, type: 'square', vol: 0.05, delay: 0.28 });
   }
 
+  /** Bright rising sweep: every block on the floor is broken. */
+  floorCleared() {
+    this.synth.noise({ dur: 0.3, filter: 'highpass', freq: 3000, to: 8000, vol: 0.12 });
+    arpeggio(this.synth, [659, 784, 988, 1319, 1568], 0.05, 'triangle', 0.14, 0.28);
+  }
+
   /** Short falling whoosh. */
   rushEnd() {
     this.synth.noise({ dur: 0.4, filter: 'bandpass', freq: 3000, to: 300, q: 1.5, vol: 0.3 });
@@ -211,6 +217,9 @@ export class Sounds {
           break;
         case 'rushEnd':
           this.rushEnd();
+          break;
+        case 'floorCleared':
+          this.floorCleared();
           break;
         case 'caveIn':
           this.caveIn();

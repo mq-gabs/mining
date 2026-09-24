@@ -1,5 +1,5 @@
 import { CONFIG, GEM_TIERS, TOOL_IDS, type ToolId, type UpgradeId } from '../config';
-import { gemsKept, gemValue } from '../game/economy';
+import { bonusForDepth, clearEnergyForDepth, gemsKept, gemValue } from '../game/economy';
 import { computeHints } from '../game/hints';
 import { hasPerk, PERKS } from '../game/perks';
 import {
@@ -16,6 +16,7 @@ import {
   createRun,
   endRun,
   grantAdEnergy,
+  runMultiplier,
   tapCell,
   tickRun,
   useTool,
@@ -69,6 +70,7 @@ export class App {
     $('btn-reset').addEventListener('click', () => this.confirmReset());
     $('grid').addEventListener('pointerdown', (e) => this.onGridPointer(e));
     $('perk-bar').addEventListener('click', () => this.showActivePerks());
+    $('clean-chip').addEventListener('click', () => this.showCleanBonus());
     $('hud-gems').addEventListener('click', () => this.showGemBreakdown());
     $('tool-bar').addEventListener('click', (e) => this.onToolButton(e));
     for (const btn of document.querySelectorAll('[data-mute]')) btn.addEventListener('click', () => this.toggleMute());
@@ -226,7 +228,7 @@ export class App {
     this.armed = undefined;
     // A banner left with its `show` class would replay its animation when the run screen is shown again.
     for (const id of ['floor-banner', 'rush-banner']) {
-      $(id).classList.remove('show');
+      $(id).classList.remove('show', 'long');
       $(id).hidden = true;
     }
     this.setRun(createRun(seed, modifiersFromProfile(this.profile)));
@@ -302,8 +304,18 @@ export class App {
         const from = this.renderer.cellClientCenter(run.floor, e.idx);
         for (let i = 0; i < 3; i++) flyGem(from, counter, TREASURE_COLOR, 12, i * 40, bump);
       }
-      if (e.type === 'descend') showBanner($('floor-banner'), `Floor ${e.depth}`);
+      if (e.type === 'descend') {
+        $('floor-banner').classList.remove('long');
+        showBanner($('floor-banner'), `Floor ${e.depth}`);
+      }
       if (e.type === 'rushStart') showBanner($('rush-banner'), 'RUSH!');
+      if (e.type === 'floorCleared') {
+        const capped = e.multiplier >= CONFIG.cleanBonus.maxMult;
+        $('floor-banner').classList.add('long');
+        const energy = e.energy ? ` · +${e.energy}⚡` : e.energyPending ? ` · +${e.energyPending}⚡ after Rush` : '';
+        showBanner($('floor-banner'), `Floor cleared! +${pct(e.bonus)} · ×${fmtMult(e.multiplier)}${capped ? ' (max)' : ''}${energy}`);
+        replayClass($('clean-chip'), 'bump');
+      }
     }
     if (run.energy > prev.energy) replayClass($('energy'), 'gain');
     else if (prev.energy - run.energy > CONFIG.energy.tapCost) replayClass($('energy'), 'drain');
@@ -459,6 +471,9 @@ export class App {
     const run = this.run;
     if (!run) return;
     $('hud-depth').textContent = `Floor ${run.depth}`;
+    const chip = $('clean-chip');
+    chip.hidden = run.cleanFloors === 0;
+    chip.textContent = `🧹 ×${fmtMult(runMultiplier(run))}`;
     $('hud-gems-value').textContent = String(run.gems);
     $('hud-gem-tiers').innerHTML = gemTiersHtml(run.stats.gemsByTier);
     const ratio = run.energy / run.mods.maxEnergy;
@@ -502,12 +517,33 @@ export class App {
     if (this.armed) hint.textContent = `${TOOL_META[this.armed].icon} Tap a block: ${TOOL_META[this.armed].description}`;
   }
 
+  /** Explains the clean floor bonus and shows this run's progress. */
+  private showCleanBonus() {
+    const run = this.run;
+    if (!run || run.status !== 'playing' || isModalOpen()) return;
+    const c = CONFIG.cleanBonus;
+    showModal(
+      `<h2>🧹 Clean floor bonus</h2>
+       <p>Break every block on a floor to raise your gem multiplier. Deeper floors are worth more:
+       floor 1 adds +${pct(bonusForDepth(1))}, floor 10 adds +${pct(bonusForDepth(10))}. It applies to the gems you
+       bring back, up to ×${fmtMult(c.maxMult)}. Each cleared floor also gives back energy: +${clearEnergyForDepth(1)}⚡ on
+       floor 1, +${clearEnergyForDepth(10)}⚡ on floor 10.</p>
+       <div class="summary-rows">
+         <div class="summary-row"><span>Floors cleaned</span><strong>${run.cleanFloors}</strong></div>
+         <div class="summary-row highlight"><span>Multiplier</span><strong>×${fmtMult(runMultiplier(run))}</strong></div>
+       </div>`,
+      [{ label: 'Back to digging', primary: true, onClick: () => {} }],
+    );
+  }
+
   // ---------- Run endings ----------
 
   private confirmLeave() {
     if (!this.run || this.run.status !== 'playing' || isModalOpen()) return;
+    const mult = runMultiplier(this.run);
+    const bonus = mult > 1 ? ` (${this.run.gems} × ${fmtMult(mult)} clean floor bonus)` : '';
     showModal(
-      `<h2>Leave the mine?</h2><p>You'll return to the surface and keep all <strong>${this.run.gems}</strong> gems from this run.</p>`,
+      `<h2>Leave the mine?</h2><p>You'll return to the surface and keep <strong>${gemsKept(this.run.gems, 'left', mult)}</strong> gems from this run${bonus}.</p>`,
       [
         { label: 'Leave Mine', primary: true, onClick: () => this.finishRun('left') },
         { label: 'Keep digging', onClick: () => {} },
@@ -518,8 +554,10 @@ export class App {
   private showOutOfEnergy(adFailed = false) {
     const run = this.run;
     if (!run || run.status !== 'outOfEnergy') return;
-    const kept = gemsKept(run.gems, 'exhausted');
-    const pct = Math.round(CONFIG.run.exhaustedKeepRatio * 100);
+    const mult = runMultiplier(run);
+    const kept = gemsKept(run.gems, 'exhausted', mult);
+    const keepPct = Math.round(CONFIG.run.exhaustedKeepRatio * 100);
+    const bonus = mult > 1 ? `, after the ×${fmtMult(mult)} clean floor bonus` : '';
     const offer = !!this.ads && canUseEnergyAd(run);
     const actions: ModalAction[] = [];
     if (offer) {
@@ -533,7 +571,7 @@ export class App {
     showModal(
       `<h2>Out of energy!</h2>
        ${adFailed ? '<p class="ad-error">The ad couldn\'t play. You can try again.</p>' : ''}
-       <p>You collapse and get carried out. You keep ${pct}% of your gems: <strong>${kept}</strong> of ${run.gems}.</p>`,
+       <p>You collapse and get carried out. You keep ${keepPct}% of your gems${bonus}: <strong>${kept}</strong> (found ${run.gems}).</p>`,
       actions,
     );
   }
@@ -613,6 +651,7 @@ export class App {
          <div class="summary-row"><span>Blocks broken</span><strong>${s.blocksBroken}</strong></div>
          <div class="summary-row"><span>Gems found</span><strong>${s.gemsFound}</strong></div>
          ${Object.keys(s.gemsByTier).length ? `<div class="summary-row gem-tiers-row">${gemTiersHtml(s.gemsByTier)}</div>` : ''}
+         ${s.cleanFloors ? `<div class="summary-row"><span>🧹 Clean floors ${s.cleanFloors} · ×${fmtMult(s.multiplier)}</span><strong>+${s.bonusGems}</strong></div>` : ''}
          <div class="summary-row highlight${s.gemsDoubled ? ' doubled' : ''}"><span>Gems kept${s.gemsDoubled ? ` <em>×${CONFIG.ads.gemMultiplier}</em>` : ''}</span><strong>${s.gemsKept}</strong></div>
        </div>
        ${opts.adFailed ? '<p class="ad-error">The ad couldn\'t play.</p>' : ''}
@@ -635,6 +674,16 @@ function perkCardHtml(id: PerkId, stackNote: string): string {
   const stack = stackNote ? ` <span class="perk-stack">${stackNote}</span>` : '';
   return `<span class="perk-icon">${p.icon}</span>
     <span class="perk-text"><strong>${p.name}${stack}</strong><span>${p.description}</span></span>`;
+}
+
+/** A share as a whole percent, e.g. 0.06 -> "6%". */
+function pct(n: number): string {
+  return `${Math.round(n * 100)}%`;
+}
+
+/** A multiplier with up to two decimals, e.g. 1.12, 1.5. */
+function fmtMult(m: number): string {
+  return String(Math.round(m * 100) / 100);
 }
 
 function parseSeedParam(): number | undefined {

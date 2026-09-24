@@ -191,7 +191,7 @@ describe('rush', () => {
     }
     expect(run.rush).toBeUndefined();
     expect(run.momentum).toBe(0);
-    expect(events).toEqual([{ type: 'rushEnd', blocks: 2, gems }]);
+    expect(events).toEqual([{ type: 'rushEnd', blocks: 2, gems, energy: 0 }]);
     expect(tickRun(run, 100).run).toBe(run);
   });
 

@@ -281,11 +281,18 @@ export class GridRenderer {
           this.ring(floor, e.idx, RUSH_COLOR, now, 2.2);
           this.burst(floor, e.idx, RUSH_COLOR, now, { count: 18, speed: 240, size: 5, duration: 280, star: true, gravity: 0 });
           break;
+        case 'floorCleared':
+          // A sweep of gold stars across the whole grid (none with reduced motion).
+          if (this.reducedMotion) break;
+          for (let idx = 0; idx < floor.cells.length; idx += 3) {
+            this.burst(floor, idx, RUSH_COLOR, now, { count: 2, speed: 90, size: 4, duration: 280, star: true, gravity: -120 });
+          }
+          break;
         case 'rushEnd': {
           // Centred on the grid, and it stays longer than a cell float so the result can be read.
           const x = this.originX + (this.cellSize * floor.cols) / 2;
           const y = this.originY + (this.cellSize * floor.rows) / 2;
-          const text = `Rush! ${e.blocks} block${e.blocks === 1 ? '' : 's'} · +${e.gems} 💎`;
+          const text = `Rush! ${e.blocks} block${e.blocks === 1 ? '' : 's'} · +${e.gems} 💎${e.energy ? ` · +${e.energy}⚡` : ''}`;
           this.floats.push({ x, y, text, color: RUSH_COLOR, start: now, duration: RUSH_RESULT_MS, size: 22 });
           break;
         }
