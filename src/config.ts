@@ -234,32 +234,23 @@ export const CONFIG = {
     /** Revealing the Legendary Diamond fades the background music out over this many seconds. */
     silenceFadeSec: 0.4,
     /**
-     * The victory song (the ending), in a major key: a fanfare `intro` once, then a calm `loop` (I–vi–IV–V) that
-     * repeats until the player taps, and fades out over `fadeOutSec`. `melody` and `chords` are played in
-     * sequence: [semitones above `root`, length in beats]. In each part both add up to the same length.
+     * The victory song (the ending), in C major: a fanfare `intro` once, then a calm `loop` (I–vi–IV–V) that
+     * repeats until the player taps, and fades out over `fadeOutSec`. Written as text (notation in
+     * `ui/song.ts`; try it with `npm run song`). In each part the melody and chords have the same length.
      */
     victory: {
-      root: 60,
       bpm: 92,
       melodyGain: 0.2,
       chordGain: 0.07,
       fadeOutSec: 1,
       intro: {
-        melody: [[0, 0.5], [4, 0.5], [7, 0.5], [12, 1], [7, 0.5], [12, 0.5], [16, 2], [14, 0.5], [16, 0.5], [19, 1.5]],
-        chords: [[[0, 4, 7], 2], [[5, 9, 12], 2], [[7, 11, 14], 2], [[0, 4, 7, 12], 2]],
+        melody: 'C5:0.5 E5:0.5 G5:0.5 C6 G5:0.5 C6:0.5 E6:2 D6:0.5 E6:0.5 G6:1.5',
+        chords: 'C:2 F:2 G:2 [C4 E4 G4 C5]:2',
       },
       loop: {
-        melody: [[12, 1], [11, 0.5], [9, 0.5], [7, 2], [9, 1], [11, 1], [12, 2], [14, 1], [12, 0.5], [11, 0.5], [9, 2], [7, 1], [4, 1], [7, 2]],
-        chords: [[[0, 4, 7], 4], [[-3, 0, 4], 4], [[5, 9, 12], 4], [[7, 11, 14], 4]],
+        melody: 'C6 B5:0.5 A5:0.5 G5:2 A5 B5 C6:2 D6 C6:0.5 B5:0.5 A5:2 G5 E5 G5:2',
+        chords: 'C:4 Am@3:4 F:4 G:4',
       },
-    } as {
-      root: number;
-      bpm: number;
-      melodyGain: number;
-      chordGain: number;
-      fadeOutSec: number;
-      intro: VictoryPart;
-      loop: VictoryPart;
     },
   },
 
@@ -321,12 +312,6 @@ export const CONFIG = {
 } as const;
 
 export const BLOCK_TYPES: BlockType[] = ['dirt', 'stone', 'hard', 'obsidian'];
-/** One part of the victory song: [semitones, beats] notes, and [semitones[], beats] chords, played in sequence. */
-interface VictoryPart {
-  melody: [number, number][];
-  chords: [number[], number][];
-}
-
 export const GEM_TIERS: GemTier[] = ['quartz', 'amethyst', 'sapphire', 'ruby'];
 export const UPGRADE_IDS: UpgradeId[] = [
   'power',

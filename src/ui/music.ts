@@ -1,5 +1,6 @@
 import { CONFIG } from '../config';
 import type { Synth } from '../platform/audio';
+import { arrange, midiToHz, parsePart, type SongText } from './song';
 
 const M = CONFIG.music;
 
@@ -20,9 +21,7 @@ export interface Mood {
   rush: boolean;
 }
 
-export function midiToHz(midi: number): number {
-  return 440 * 2 ** ((midi - 69) / 12);
-}
+export { midiToHz };
 
 /** MIDI note of a scale degree above `root`. Degrees past the scale wrap into higher (or lower) octaves. */
 export function scaleNote(root: number, degree: number, scale: readonly number[] = M.scale): number {
@@ -208,24 +207,10 @@ export class MusicEngine {
   }
 
   /** Schedules one part of the victory song from time `t`. Returns when it ends. */
-  private victoryPart(dest: AudioNode, part: (typeof M.victory)['intro'], t: number): number {
-    const v = M.victory;
-    const beat = 60 / v.bpm;
-    let at = t;
-    for (const [semi, beats] of part.melody) {
-      const freq = midiToHz(v.root + 12 + semi);
-      this.voice(dest, at, freq, beats * beat * 1.1, 'triangle', v.melodyGain, 0.02);
-      this.voice(dest, at, freq * 2, beats * beat * 0.6, 'sine', v.melodyGain * 0.25, 0.02);
-      at += beats * beat;
-    }
-    const end = at;
-    at = t;
-    for (const [semis, beats] of part.chords) {
-      for (const semi of semis) this.voice(dest, at, midiToHz(v.root + semi), beats * beat * 1.2, 'sine', v.chordGain, 0.08);
-      this.voice(dest, at, midiToHz(v.root - 12 + semis[0]), beats * beat * 1.2, 'triangle', v.chordGain * 1.2, 0.05);
-      at += beats * beat;
-    }
-    return end;
+  private victoryPart(dest: AudioNode, text: SongText, t: number): number {
+    const { voices, length } = arrange(parsePart(text), M.victory);
+    for (const v of voices) this.voice(dest, t + v.at, v.freq, v.dur, v.type, v.gain, v.attack);
+    return t + length;
   }
 
   /** A short, hopeful chord (the perk screen). Not filtered, so it shines even on dark floors. */
