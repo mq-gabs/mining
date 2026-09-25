@@ -28,7 +28,7 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   `SIM_GOAL=20` adds the share of bots that reach that floor, and on which run. `SIM_STRATEGIES=1` runs five bot
   sets instead (clean 100/75/50/25% of every floor, or stairs only), a full report each; it takes ~5 minutes.
   Results: `docs/reports/2026-09-24-cleaning-strategies.md`.
-- `npm run song -- victory` (or `victory:intro`, `victory:loop`, or a melody like `"C5:e E5:e G5 C6:h" --chords "C:2 G:2"`,
+- `npm run song -- victory` (or `victory:intro`, `victory:loop`, `defeat`, or a melody like `"C5:e E5:e G5 C6:h" --chords "C:2 G:2"`,
   with `--bpm`, `--loop N`, `--out`, `--no-play`): renders a song to a WAV with the game's sound and plays it
   (`pw-play`/`paplay`/`aplay`/`afplay`/`ffplay`). Node APIs for scripts are typed in `scripts/node-shims.d.ts`
   (no `@types/node`: it would change the browser timer types).
@@ -225,6 +225,11 @@ cover it. It's the only diamond (a user decision): there's no diamond gem tier. 
   It's written as text in a song notation (`ui/song.ts`: notes like `C5:e`, chords like `Am@3:2`; parsed by
   `parsePart`, turned into voices by `arrange`, which both the game and `npm run song` play). Tests: `song.test.ts`.
 - **Drawing:** the lying diamond's glow spills over nearby cells, so `drawCells` draws it after every cell.
+- **Losing:** the player has `goal.maxRuns` (10) runs. When the last one (`isLastRun(profile)`, progression.ts) ends
+  without the diamond, the game is lost: running dry (after the energy ad, if one is still on offer) or leaving
+  (`finishRun` on the last run). `playFailure` (`ui/ending.ts`): the screen fades to black, the sad song starts
+  (`MusicEngine.defeat`, `music.defeat`, A minor, a loop until the tap), "You failed" fades in, then "Tap to
+  continue". The tap resets progress and goes back to the hub, like winning. No summary.
 - **Sim:** bots pick the diamond up like any item (`endRun(run, 'won')`: all gems kept, like leaving), and their career
   goes on without a reset. With `SIM_GOAL=12`, 25% of bots win within 10 runs.
 

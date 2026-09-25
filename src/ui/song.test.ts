@@ -62,11 +62,11 @@ describe('song notation', () => {
   });
 });
 
-describe('victory song (config)', () => {
+describe('game songs (config)', () => {
   const v = CONFIG.music.victory;
 
   it('each part parses, and its melody and chords have the same length, so the loop stays in time', () => {
-    for (const part of [v.intro, v.loop]) {
+    for (const part of [v.intro, v.loop, CONFIG.music.defeat.loop]) {
       const { melody, chords } = parsePart(part);
       expect(totalBeats(melody)).toBe(totalBeats(chords));
     }

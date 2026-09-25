@@ -6,7 +6,7 @@ export const en = {
   // Hub
   'hub.tagline': 'Dig down. Grab gems. Get out alive.',
   'hub.gems': 'Gems',
-  'hub.bestFloor': 'Best floor',
+  'hub.runsLeft': 'Runs left',
   'hub.upgrades': 'Upgrades',
   'hub.reset': 'Reset progress',
   'hub.start': 'Start Run',
@@ -156,6 +156,7 @@ export const en = {
   // Run summary
   'summary.newBest': 'New best depth!',
   'summary.titleLeft': 'Back on the surface',
+  'ending.failed': 'You failed',
   'ending.hint': 'Tap to continue',
   'summary.titleExhausted': 'Carried out',
   'summary.depth': 'Depth reached',

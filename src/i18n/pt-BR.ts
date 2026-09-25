@@ -5,7 +5,7 @@ export const ptBR: Record<MessageKey, string> = {
   // Hub
   'hub.tagline': 'Cave fundo. Pegue gemas. Saia com vida.',
   'hub.gems': 'Gemas',
-  'hub.bestFloor': 'Melhor andar',
+  'hub.runsLeft': 'Expedições restantes',
   'hub.upgrades': 'Melhorias',
   'hub.reset': 'Apagar progresso',
   'hub.start': 'Começar expedição',
@@ -156,6 +156,7 @@ export const ptBR: Record<MessageKey, string> = {
   // Run summary
   'summary.newBest': 'Novo recorde de profundidade!',
   'summary.titleLeft': 'De volta à superfície',
+  'ending.failed': 'Você falhou',
   'ending.hint': 'Toque para continuar',
   'summary.titleExhausted': 'Resgate',
   'summary.depth': 'Profundidade alcançada',

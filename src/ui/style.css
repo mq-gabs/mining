@@ -210,6 +210,8 @@ body {
   letter-spacing: 0.06em;
 }
 .stat-value {
+  /* At the bottom of the card, so values line up when a label wraps (pt-BR). */
+  margin-top: auto;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1177,6 +1179,13 @@ body {
 }
 .ending-diamond .gem-svg {
   display: block;
+}
+.ending-title {
+  margin: 0;
+  font-size: clamp(36px, 11vw, 64px);
+  font-weight: 800;
+  color: var(--text);
+  opacity: 0;
 }
 .ending-hint {
   position: fixed;

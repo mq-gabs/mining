@@ -34,8 +34,11 @@ export const CONFIG = {
     stairsBottomRows: 4,
   },
 
-  /** The game's goal: the Legendary Diamond lies on this floor, in place of the stairs. Picking it up wins. */
-  goal: { depth: 12 },
+  /**
+   * The game's goal: the Legendary Diamond lies on floor `depth`, in place of the stairs. Picking it up wins.
+   * The player has `maxRuns` runs to find it: when the last one ends without it, the game is lost.
+   */
+  goal: { depth: 12, maxRuns: 10 },
 
   energy: {
     start: 50,
@@ -250,6 +253,17 @@ export const CONFIG = {
       loop: {
         melody: 'C6 B5:0.5 A5:0.5 G5:2 A5 B5 C6:2 D6 C6:0.5 B5:0.5 A5:2 G5 E5 G5:2',
         chords: 'C:4 Am@3:4 F:4 G:4',
+      },
+    },
+    /** The sad song (the game is lost), in A minor (i–VI–iv–V): a slow loop until the player taps. */
+    defeat: {
+      bpm: 66,
+      melodyGain: 0.16,
+      chordGain: 0.07,
+      fadeOutSec: 1.5,
+      loop: {
+        melody: 'E5:2 D5 C5 A4:2 C5:2 D5 C5 A4:2 G#4:2 B4:2',
+        chords: 'Am@3:4 F@3:4 Dm@3:4 E@3:4',
       },
     },
   },

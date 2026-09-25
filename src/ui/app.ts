@@ -7,6 +7,8 @@ import {
   applyRunResult,
   buyUpgrade,
   doubleRunGems,
+  isLastRun,
+  runsLeft,
   modifiersFromProfile,
   shouldShowInterstitial,
   type Profile,
@@ -31,7 +33,7 @@ import { ProfileStore, SettingsStore, type Settings } from '../platform/storage'
 import { flyGem, replayClass, showBanner } from './fx';
 import { GridRenderer, type DrawView } from './gridRenderer';
 import { installDevPanel } from './devPanel';
-import { playEnding } from './ending';
+import { playEnding, playFailure } from './ending';
 import { hideModal, isModalOpen, showModal, type ModalAction } from './modal';
 import { renderShop } from './shop';
 import { MusicEngine } from './music';
@@ -242,7 +244,7 @@ export class App {
 
   private renderHub(justBought?: UpgradeId) {
     $('hub-gems').textContent = String(this.profile.gems);
-    $('hub-best').textContent = this.profile.bestDepth ? String(this.profile.bestDepth) : '–';
+    $('hub-runs').textContent = String(runsLeft(this.profile));
     renderShop($('shop'), this.profile, (id) => this.buy(id), justBought);
   }
 
@@ -632,6 +634,8 @@ export class App {
     const keepPct = Math.round(CONFIG.run.exhaustedKeepRatio * 100);
     const bonus = mult > 1 ? t('oom.bonus', { mult: fmtMult(mult) }) : '';
     const offer = !!this.ads && canUseEnergyAd(run);
+    // On the last run, running dry loses the game (unless the energy ad can still save it).
+    if (!offer && isLastRun(this.profile)) return void this.playFailure();
     const actions: ModalAction[] = [];
     if (offer) {
       actions.push({
@@ -697,11 +701,29 @@ export class App {
 
   private finishRun(reason: EndReason) {
     if (!this.run) return;
+    // The last run ended without the Legendary Diamond: the game is lost.
+    if (isLastRun(this.profile)) return void this.playFailure();
     const { summary } = endRun(this.run, reason);
     this.run = undefined;
     const { profile, newBest } = applyRunResult(this.profile, summary);
     this.setProfile(profile);
     this.showSummary(summary, newBest, { fanfare: true });
+  }
+
+  /** The lost game (see `playFailure`). Like winning, progress resets and the player is back on the hub. */
+  private async playFailure() {
+    if (!this.run) return;
+    this.music.silence(true);
+    let stopSong = () => {};
+    await playFailure({
+      onSong: () => (stopSong = this.music.defeat()),
+      title: t('ending.failed'),
+      hint: t('ending.hint'),
+    });
+    stopSong();
+    this.run = undefined;
+    this.profile = this.store.reset();
+    this.showHub();
   }
 
   /** The game's ending (see `playEnding`). The game is over: progress resets and the player is back on the hub. */

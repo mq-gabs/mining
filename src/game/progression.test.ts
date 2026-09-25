@@ -4,6 +4,8 @@ import { gemChanceForDepth, gemWeightsForDepth } from './floor';
 import {
   applyRunResult,
   buyUpgrade,
+  isLastRun,
+  runsLeft,
   modifiersFromProfile,
   newProfile,
   parseProfile,
@@ -83,6 +85,20 @@ describe('applyRunResult', () => {
     const second = applyRunResult(first.profile, summary({ depth: 2, gemsKept: 3 }));
     expect(second.newBest).toBe(false);
     expect(second.profile).toMatchObject({ gems: 15, bestDepth: 4, runsCompleted: 2 });
+  });
+});
+
+describe('isLastRun', () => {
+  it('is the run played after maxRuns - 1 completed runs (the 10th)', () => {
+    const last = CONFIG.goal.maxRuns - 1;
+    expect(isLastRun({ runsCompleted: last - 1 })).toBe(false);
+    expect(isLastRun({ runsCompleted: last })).toBe(true);
+  });
+
+  it('counts the runs left, the next one included', () => {
+    expect(runsLeft({ runsCompleted: 0 })).toBe(CONFIG.goal.maxRuns);
+    expect(runsLeft({ runsCompleted: CONFIG.goal.maxRuns - 1 })).toBe(1);
+    expect(runsLeft({ runsCompleted: CONFIG.goal.maxRuns + 3 })).toBe(0);
   });
 });
 

@@ -129,6 +129,16 @@ export function shouldShowInterstitial(runsCompleted: number): boolean {
   return runsCompleted > 0 && runsCompleted % every === 0;
 }
 
+/** The run about to be played (or being played) is the last one the player has to find the Legendary Diamond. */
+export function isLastRun(profile: Pick<Profile, 'runsCompleted'>): boolean {
+  return profile.runsCompleted + 1 >= CONFIG.goal.maxRuns;
+}
+
+/** Runs the player still has to find the Legendary Diamond (including the next one). */
+export function runsLeft(profile: Pick<Profile, 'runsCompleted'>): number {
+  return Math.max(0, CONFIG.goal.maxRuns - profile.runsCompleted);
+}
+
 export function applyRunResult(profile: Profile, summary: RunSummary): { profile: Profile; newBest: boolean } {
   const newBest = summary.depth > profile.bestDepth;
   return {

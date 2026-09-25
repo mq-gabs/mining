@@ -1,8 +1,11 @@
 import { CONFIG } from '../config';
 import type { Synth } from '../platform/audio';
-import { arrange, midiToHz, parsePart, type SongText } from './song';
+import { arrange, midiToHz, parsePart, type Arrangement, type SongText } from './song';
 
 const M = CONFIG.music;
+
+/** A song in `CONFIG.music` (the victory or the sad song): an optional intro, then a loop. */
+type SongConfig = Arrangement & { fadeOutSec: number; intro?: SongText; loop: SongText };
 
 /** What the music should reflect right now. */
 export type MusicScene = { scene: 'hub' } | { scene: 'run'; depth: number; lowEnergy: boolean; rush: boolean };
@@ -186,19 +189,30 @@ export class MusicEngine {
    * background is silenced): the intro once, then the loop until the returned `stop` fades it out.
    */
   victory(): () => void {
+    return this.playSong(M.victory);
+  }
+
+  /** The sad song (the game is lost): a slow loop until the returned `stop` fades it out. Like `victory`. */
+  defeat(): () => void {
+    return this.playSong(M.defeat);
+  }
+
+  /** Plays `song`'s intro (if any) once, then its loop until the returned `stop`, on its own fader. */
+  private playSong(song: SongConfig): () => void {
     const out = this.synth.musicOutput();
     if (!out || !this.started) return () => {};
-    const v = M.victory;
+    const v = song;
     const { ctx } = out;
     const bus = ctx.createGain();
     bus.connect(out.out);
     let timer = 0;
     const loopStart = (t: number) => {
-      const end = this.victoryPart(bus, v.loop, t);
+      const end = this.songPart(bus, v, v.loop, t);
       // Schedule the next round a second before this one ends (on the audio clock, so a pause just waits).
       timer = window.setTimeout(() => loopStart(end), Math.max(0, (end - ctx.currentTime - 1) * 1000));
     };
-    loopStart(this.victoryPart(bus, v.intro, ctx.currentTime + 0.05));
+    const start = ctx.currentTime + 0.05;
+    loopStart(v.intro ? this.songPart(bus, v, v.intro, start) : start);
     return () => {
       clearTimeout(timer);
       bus.gain.setTargetAtTime(0, ctx.currentTime, v.fadeOutSec / 3);
@@ -206,9 +220,9 @@ export class MusicEngine {
     };
   }
 
-  /** Schedules one part of the victory song from time `t`. Returns when it ends. */
-  private victoryPart(dest: AudioNode, text: SongText, t: number): number {
-    const { voices, length } = arrange(parsePart(text), M.victory);
+  /** Schedules one part of a song from time `t`. Returns when it ends. */
+  private songPart(dest: AudioNode, song: SongConfig, text: SongText, t: number): number {
+    const { voices, length } = arrange(parsePart(text), song);
     for (const v of voices) this.voice(dest, t + v.at, v.freq, v.dur, v.type, v.gain, v.attack);
     return t + length;
   }
