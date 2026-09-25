@@ -21,7 +21,7 @@ describe('economy', () => {
     expect(gemValue('quartz')).toBe(1);
     expect(gemValue('amethyst', 1.5)).toBe(8); // 7.5 -> 8
     expect(gemValue('quartz', 0.1)).toBe(1); // never below 1
-    expect(gemValue('diamond', 1.1)).toBe(220);
+    expect(gemValue('ruby', 1.1)).toBe(66);
   });
 
   it('gas loss is base plus a per-depth step', () => {

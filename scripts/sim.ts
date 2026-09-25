@@ -26,7 +26,7 @@ import {
   toolArea,
   useTool,
 } from '../src/game/run';
-import type { Cell, PerkId, RunState, RunSummary, ToolId } from '../src/game/types';
+import type { Cell, EndReason, PerkId, RunState, RunSummary, ToolId } from '../src/game/types';
 
 /** Bot's perk preference, best first. */
 const PERK_PRIORITY: PerkId[] = [
@@ -196,7 +196,7 @@ function playRun(seed: number, profile: Profile, rand: Rand, quota?: number): Ru
   let run = createRun(seed, modifiersFromProfile(profile));
   const rush = { rushBlocks: 0, rushGems: 0 };
   let cleanDepths = 0;
-  const result = (reason: 'left' | 'exhausted'): RunResult => ({
+  const result = (reason: EndReason): RunResult => ({
     summary: endRun(run, reason).summary,
     cleanDepths,
     rushes: run.stats.rushes,
@@ -262,7 +262,7 @@ function playRun(seed: number, profile: Profile, rand: Rand, quota?: number): Ru
       return result('left');
     }
   }
-  return result('exhausted');
+  return result(run.status === 'won' ? 'won' : 'exhausted');
 }
 
 /** Buys the cheapest affordable upgrade until nothing is affordable. Returns count bought. */

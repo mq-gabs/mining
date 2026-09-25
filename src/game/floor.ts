@@ -67,9 +67,10 @@ export function generateFloor(runSeed: number, depth: number, opts: FloorOptions
   const entrance = toIndex({ cols }, Math.floor(cols / 2), 0);
   cells[entrance] = { ...cells[entrance], open: true, hp: 0, content: { kind: 'none' } };
 
+  // The goal floor has no stairs: the Legendary Diamond takes their place.
   const stairsRow = rows - stairsBottomRows + rng.int(stairsBottomRows);
   const stairs = toIndex({ cols }, rng.int(cols), stairsRow);
-  cells[stairs].content = { kind: 'stairs' };
+  cells[stairs].content = depth === CONFIG.goal.depth ? { kind: 'legendary' } : { kind: 'stairs' };
 
   const extraChances = EXTRA_CONTENTS.map((kind) => [kind, contentChanceForDepth(kind, depth)] as const);
   for (let i = 0; i < cells.length; i++) {

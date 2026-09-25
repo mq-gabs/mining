@@ -1,11 +1,12 @@
-import { CONFIG, GEM_TIERS, type BlockType, type GemTier, type ToolId } from '../config';
+import { CONFIG, GEM_TIERS, type BlockType, type ToolId } from '../config';
 import type { RunEvent, RunState } from '../game/types';
 import { Synth } from '../platform/audio';
+import type { GemLook } from './theme';
 
 /** Harder blocks sound higher and brighter. */
 const BLOCK_PITCH: Record<BlockType, number> = { dirt: 700, stone: 1500, hard: 2300, obsidian: 3200 };
 /** Base pitch of each gem tier's ding (A5 up to G6). */
-const GEM_PITCH: Record<GemTier, number> = { quartz: 880, amethyst: 988, sapphire: 1175, ruby: 1319, diamond: 1568 };
+const GEM_PITCH: Record<GemLook, number> = { quartz: 880, amethyst: 988, sapphire: 1175, ruby: 1319, legendary: 1568 };
 /** At most this many gem dings per action (a big blast shouldn't be a wall of noise). */
 const MAX_DINGS = 5;
 /** Rush breaks rise in pitch with the combo, up to this many steps. */
@@ -57,14 +58,15 @@ export class Sounds {
   }
 
   /** Rising ding; higher tiers are higher, and the top tiers add a shimmer. `n` staggers a combo upward. */
-  gem(tier: GemTier, n = 0) {
-    const rank = GEM_TIERS.indexOf(tier);
+  gem(tier: GemLook, n = 0) {
+    // The Legendary Diamond ranks above every tier.
+    const rank = tier === 'legendary' ? GEM_TIERS.length : GEM_TIERS.indexOf(tier);
     const freq = GEM_PITCH[tier] * (1 + 0.06 * n);
     const delay = n * 0.05;
     this.synth.tone({ freq, to: freq * 1.5, dur: 0.22 + rank * 0.04, vol: 0.22, delay });
     this.synth.tone({ freq: freq * 2, dur: 0.15, type: 'triangle', vol: 0.06, delay });
     if (rank >= 2) this.synth.tone({ freq: freq * 1.5, to: freq * 3, dur: 0.3, vol: 0.08, delay: delay + 0.06 });
-    if (rank >= 4) arpeggio(this.synth, [freq * 2, freq * 2.5, freq * 3], 0.05, 'sine', 0.06);
+    if (rank >= GEM_TIERS.length) arpeggio(this.synth, [freq * 2, freq * 2.5, freq * 3], 0.05, 'sine', 0.06);
   }
 
   crystal() {
@@ -106,6 +108,16 @@ export class Sounds {
   reveal() {
     this.synth.tone({ freq: 1760, dur: 0.08, type: 'triangle', vol: 0.07, delay: 0.05 });
     this.synth.tone({ freq: 2349, dur: 0.1, type: 'triangle', vol: 0.05, delay: 0.1 });
+  }
+
+  /** The Legendary Diamond is revealed (the music has just stopped): a gasp of air, then a bright shimmering chord. */
+  legendaryReveal() {
+    this.synth.noise({ dur: 0.5, filter: 'highpass', freq: 3000, to: 8000, vol: 0.12 });
+    this.synth.tone({ freq: 196, to: 392, dur: 0.5, type: 'triangle', vol: 0.18 });
+    [1047, 1319, 1568, 2093, 2637].forEach((freq, i) => {
+      this.synth.tone({ freq, dur: 1.4 - i * 0.12, type: 'sine', vol: 0.1, delay: 0.35 + i * 0.07 });
+      this.synth.tone({ freq: freq * 1.005, dur: 1.2 - i * 0.1, type: 'triangle', vol: 0.04, delay: 0.38 + i * 0.07 });
+    });
   }
 
   caveIn() {
@@ -217,12 +229,18 @@ export class Sounds {
       else if (hit) this.hit(block(hit.idx));
     }
     // Once per action, even when a blast reveals several items.
-    if (events.some((e) => e.type === 'itemRevealed')) this.reveal();
+    const revealed = events.filter((e) => e.type === 'itemRevealed');
+    if (revealed.some((e) => e.content.kind === 'legendary')) this.legendaryReveal();
+    else if (revealed.length) this.reveal();
     let dings = 0;
     for (const e of events) {
       switch (e.type) {
         case 'gem':
           if (dings < MAX_DINGS) this.gem(e.tier, dings++);
+          break;
+        case 'legendary':
+          // The usual pickup sound; the ending brings the victory song.
+          this.gem('legendary');
           break;
         case 'freeSwing':
           this.freeSwing();

@@ -14,7 +14,7 @@ The full spec is in `ORIGINAL-PROMPT.md`. It is built milestone by milestone; st
   M6 ads (`AdService` + `MockAdService` in `platform/ads.ts`, behind the `ads` feature flag).
 - All six milestones of the spec are done. Extra: procedural adaptive background music (`ui/music.ts`),
   Rush (see the Rush section below), the clean floor bonus (see its section below),
-  language support (English and pt-BR, `src/i18n/`), stackable Gas Mask and the perk changes (see the deviations
+  the goal (the Legendary Diamond on floor 12, see below), language support (English and pt-BR, `src/i18n/`), stackable Gas Mask and the perk changes (see the deviations
   below), and a dev tools
   panel (`ui/devPanel.ts`, behind the `devTools` flag).
 
@@ -197,6 +197,30 @@ clear (a test checks it), or cleaning could pay for itself and runs would never 
   14.5) with about the same or more gems (1000–1500, against 980). Double the refund made cleaning dominant
   (about 2800). Gems kept swing ±30–50% between nearly identical settings, because careers compound, so
   compare depth and trends, not single gem numbers.
+
+## Goal: the Legendary Diamond
+
+The game ends on floor `CONFIG.goal.depth` (12). That floor has no stairs: the Legendary Diamond (`{ kind: 'legendary' }`)
+takes their place (same bottom rows). It's two-step like other items (`isCollectible`): breaking the block reveals
+it, a free tap picks it up and sets `status: 'won'` (`legendary` event). Nothing else happens after that; the UI plays
+the ending. While the revealed diamond lies on the floor the run can't run dry (`legendaryLying`), and cave-ins never
+cover it. It's the only diamond (a user decision): there's no diamond gem tier. It has its own look and sound
+(`GemLook` = a gem tier or `'legendary'`, in `GEM_COLORS` / `GEM_SHAPES` / `GEM_PITCH`). Tests are in
+`roguelike.test.ts`.
+
+- **Reveal:** the background music fades out (`MusicEngine.silence`, `music.silenceFadeSec`) and a surprise sound
+  plays (`Sounds.legendaryReveal`), with a big ring, burst and shake. The music comes back on the hub.
+- **Pickup:** the usual gem sound, then the ending (`ui/ending.ts`, DOM on top of everything): the screen fades to
+  black except the diamond, the victory song starts, the diamond grows to the center and stays there with a breathing
+  glow, and "Tap to continue" shows. A tap ends the game: progress resets (like "Reset progress": `store.reset()`,
+  device settings stay) and the player is back on the hub. No "The End" text and no summary (user decisions). A
+  cinematic, so its timings are longer than the usual < 300 ms on purpose. Reduced motion swaps the diamond's move
+  for a crossfade and drops the breathing.
+- **Victory song** (`MusicEngine.victory`, tuned in `music.victory`): a fanfare intro, then a calm I–vi–IV–V loop
+  that repeats until the tap, then fades out. It has its own fader, so it plays while the background is silenced.
+- **Drawing:** the lying diamond's glow spills over nearby cells, so `drawCells` draws it after every cell.
+- **Sim:** bots pick the diamond up like any item (`endRun(run, 'won')`: all gems kept, like leaving), and their career
+  goes on without a reset. With `SIM_GOAL=12`, 25% of bots win within 10 runs.
 
 ## Balance workflow
 

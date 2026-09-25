@@ -12,7 +12,7 @@ export function gemValue(tier: GemTier, valueMult = 1): number {
  */
 export function gemsKept(runGems: number, reason: EndReason, multiplier = 1): number {
   const total = Math.round(runGems * multiplier);
-  if (reason === 'left') return total;
+  if (reason !== 'exhausted') return total;
   return Math.floor(total * CONFIG.run.exhaustedKeepRatio);
 }
 

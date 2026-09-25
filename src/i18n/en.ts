@@ -127,7 +127,6 @@ export const en = {
   'gem.amethyst': 'Amethyst',
   'gem.sapphire': 'Sapphire',
   'gem.ruby': 'Ruby',
-  'gem.diamond': 'Diamond',
 
   // Clean floor bonus
   'clean.title': '🧹 Clean floor bonus',
@@ -157,6 +156,7 @@ export const en = {
   // Run summary
   'summary.newBest': 'New best depth!',
   'summary.titleLeft': 'Back on the surface',
+  'ending.hint': 'Tap to continue',
   'summary.titleExhausted': 'Carried out',
   'summary.depth': 'Depth reached',
   'summary.depthValue': 'Floor {n}',

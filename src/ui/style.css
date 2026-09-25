@@ -1155,3 +1155,50 @@ body {
 .dev-section > .btn {
   width: 100%;
 }
+
+/* ---------- Ending (the Legendary Diamond) ---------- */
+.ending {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: #000;
+  opacity: 0;
+}
+.ending-diamond {
+  position: fixed;
+  z-index: 61;
+  pointer-events: none;
+  transform-origin: center;
+  filter: drop-shadow(0 0 6px var(--gem)) drop-shadow(0 0 18px rgba(159, 243, 255, 0.6));
+}
+.ending-diamond .gem-svg {
+  display: block;
+}
+.ending-hint {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: 15%;
+  margin: 0;
+  color: var(--muted);
+  font-size: 16px;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 600ms ease;
+}
+.ending-hint.show {
+  opacity: 1;
+}
+/* A slow breathing glow once the diamond has settled in the center. */
+.ending-diamond.pulse {
+  animation: ending-glow 2.4s ease-in-out infinite;
+}
+@keyframes ending-glow {
+  50% {
+    filter: drop-shadow(0 0 8px var(--gem)) drop-shadow(0 0 28px rgba(159, 243, 255, 0.85));
+  }
+}

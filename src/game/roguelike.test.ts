@@ -5,7 +5,7 @@ import { contentChanceForDepth, generateFloor } from './floor';
 import { computeHints } from './hints';
 import { availablePerks, PERK_IDS, rollPerkOffer } from './perks';
 import { Rng } from './rng';
-import { choosePerk, createRun, descend, grantAdEnergy, tapCell, tickRun, useTool } from './run';
+import { choosePerk, createRun, descend, endRun, grantAdEnergy, tapCell, tickRun, useTool } from './run';
 import type { Content, PerkId, RunEvent, RunState } from './types';
 
 /** All-dirt floor, no contents except stairs moved out of the way (bottom-right corner). */
@@ -46,6 +46,50 @@ describe('floor contents', () => {
     const kinds = new Set<string>();
     for (let s = 1; s < 50; s++) generateFloor(s, 6).cells.forEach((c) => kinds.add(c.content.kind));
     for (const k of ['gem', 'crystal', 'chest', 'gas', 'caveIn', 'hole', 'stairs', 'none']) expect(kinds).toContain(k);
+  });
+});
+
+describe('the Legendary Diamond (goal)', () => {
+  /** A blank run on the goal floor with the diamond right below the entrance. */
+  const goalRun = () => {
+    const run = { ...blankRun(), depth: CONFIG.goal.depth, gems: 40, energy: 20 };
+    set(run, below(run), { kind: 'legendary' });
+    return run;
+  };
+
+  it('breaking it reveals it; picking it up (free) wins the run', () => {
+    const run = goalRun();
+    const broken = tapCell(run, below(run));
+    expect(broken.events).toContainEqual({ type: 'itemRevealed', idx: below(run), content: { kind: 'legendary' } });
+    expect(broken.run.status).toBe('playing');
+    const won = tapCell(broken.run, below(run));
+    expect(won.events).toContainEqual({ type: 'legendary', idx: below(run) });
+    expect(won.run.status).toBe('won');
+    expect(won.run.energy).toBe(broken.run.energy);
+    // Nothing else can happen once won, and the gems are all kept.
+    expect(tapCell(won.run, E(run) + 1).run).toBe(won.run);
+    expect(tickRun({ ...won.run, momentum: 0.5 }, 100).events).toEqual([]);
+    expect(endRun(won.run, 'won').summary).toMatchObject({ reason: 'won', gemsKept: 40, depth: CONFIG.goal.depth });
+  });
+
+  it("doesn't run dry while the revealed diamond lies on the floor", () => {
+    const run = { ...goalRun(), energy: 1 };
+    const broken = tapCell(run, below(run));
+    expect(broken.run.energy).toBe(0);
+    expect(broken.run.status).toBe('playing');
+    expect(tapCell(broken.run, below(run)).run.status).toBe('won');
+    // Without the diamond, the last energy runs the run dry as usual.
+    const plain = { ...blankRun(), energy: 1 };
+    expect(tapCell(plain, below(plain)).run.status).toBe('outOfEnergy');
+  });
+
+  it('a cave-in never covers the revealed diamond', () => {
+    const run = goalRun();
+    const revealed = tapCell(run, below(run)).run;
+    const next = below(run) + run.floor.cols;
+    set(revealed, next, { kind: 'caveIn' });
+    const r = tapCell(revealed, next);
+    expect(r.run.floor.cells[below(run)]).toMatchObject({ open: true, content: { kind: 'legendary' } });
   });
 });
 
@@ -318,7 +362,7 @@ describe('perks', () => {
     expect(descend(run).run.status).toBe('playing');
   });
 
-  it('runs always end: a bot with every perk and max upgrades still runs dry', () => {
+  it('runs always end: a bot with every perk and max upgrades runs dry or wins on the goal floor', () => {
     let run = createRun(4242, {
       maxEnergy: 200,
       power: 11,
@@ -326,20 +370,21 @@ describe('perks', () => {
       gemValueMult: 2,
       toolCharges: { dynamite: 6, drill: 6, scanner: 6 },
     });
-    for (let steps = 0; run.status !== 'outOfEnergy' && steps < 20000; steps++) {
+    for (let steps = 0; run.status !== 'outOfEnergy' && run.status !== 'won' && steps < 20000; steps++) {
       if (run.status === 'choosingPerk') {
         const c = run.perkOffer!.choices;
         run = choosePerk(run, c.includes('secondWind') ? 'secondWind' : c[0]).run;
         continue;
       }
       const f = run.floor;
-      const stairs = f.cells.findIndex((c) => c.open && c.content.kind === 'stairs');
+      const stairs = f.cells.findIndex((c) => c.open && (c.content.kind === 'stairs' || c.content.kind === 'legendary'));
       const hints = computeHints(f);
       run = tapCell(run, stairs >= 0 ? stairs : Math.max(...hints.map((h, i) => (h ? i : -1)))).run;
       // A quick player (~3 taps a second): the Rush timer and meter drain run in play time.
       run = tickRun(run, 300).run;
     }
-    expect(run.status).toBe('outOfEnergy');
+    expect(['outOfEnergy', 'won']).toContain(run.status);
+    if (run.status === 'won') expect(run.depth).toBe(CONFIG.goal.depth);
   });
 
   it('Sharp Edge and Second Wind apply immediately', () => {

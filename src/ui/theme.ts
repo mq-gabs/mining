@@ -19,16 +19,19 @@ export const RUSH_BLOCK_COLORS: Record<BlockType, { top: string; bottom: string;
 };
 export const RUSH_COLOR = '#ffd24a';
 
-export const GEM_COLORS: Record<GemTier, string> = {
+/** A gem tier, or the Legendary Diamond (the goal), which is drawn like a gem but isn't a tier. */
+export type GemLook = GemTier | 'legendary';
+
+export const GEM_COLORS: Record<GemLook, string> = {
   quartz: '#f4f1ea',
   amethyst: '#b875ff',
   sapphire: '#4b8bff',
   ruby: '#ff4163',
-  diamond: '#8ff8ff',
+  legendary: '#8ff8ff',
 };
 
 /** Unit-radius outlines, one silhouette per gem tier so they read apart without color. */
-export const GEM_SHAPES: Record<GemTier, [number, number][]> = {
+export const GEM_SHAPES: Record<GemLook, [number, number][]> = {
   // Hexagonal crystal column.
   quartz: [[0, -1], [0.5, -0.6], [0.5, 0.6], [0, 1], [-0.5, 0.6], [-0.5, -0.6]],
   // Trillion (triangle) cut.
@@ -41,11 +44,11 @@ export const GEM_SHAPES: Record<GemTier, [number, number][]> = {
   // Emerald (clipped rectangle) cut.
   ruby: [[-0.4, -0.85], [0.4, -0.85], [0.8, -0.45], [0.8, 0.45], [0.4, 0.85], [-0.4, 0.85], [-0.8, 0.45], [-0.8, -0.45]],
   // Brilliant: flat crown over a pointed pavilion.
-  diamond: [[-0.5, -0.75], [0.5, -0.75], [1, -0.25], [0, 0.95], [-1, -0.25]],
+  legendary: [[-0.5, -0.75], [0.5, -0.75], [1, -0.25], [0, 0.95], [-1, -0.25]],
 };
 
 /** The gem icon as inline SVG, for DOM UI (the canvas draws the same shapes). */
-export function gemIconSvg(tier: GemTier, size = 16): string {
+export function gemIconSvg(tier: GemLook, size = 16): string {
   const pts = GEM_SHAPES[tier].map(([x, y]) => `${(x * 10).toFixed(1)},${(y * 10).toFixed(1)}`).join(' ');
   return (
     `<svg class="gem-svg" width="${size}" height="${size}" viewBox="-12 -12 24 24" aria-hidden="true">` +

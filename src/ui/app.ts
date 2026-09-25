@@ -31,6 +31,7 @@ import { ProfileStore, SettingsStore, type Settings } from '../platform/storage'
 import { flyGem, replayClass, showBanner } from './fx';
 import { GridRenderer, type DrawView } from './gridRenderer';
 import { installDevPanel } from './devPanel';
+import { playEnding } from './ending';
 import { hideModal, isModalOpen, showModal, type ModalAction } from './modal';
 import { renderShop } from './shop';
 import { MusicEngine } from './music';
@@ -234,6 +235,8 @@ export class App {
     $('screen-run').hidden = true;
     $('screen-hub').hidden = false;
     this.music.setScene({ scene: 'hub' });
+    // Back from the Legendary Diamond's silence (the ending, or leaving without picking it up).
+    this.music.silence(false);
     this.renderHub();
   }
 
@@ -420,6 +423,10 @@ export class App {
 
   private onEvents(events: RunEvent[]) {
     for (const e of events) {
+      // The Legendary Diamond: the music stops on the reveal (the surprise sound plays alone), and the
+      // pickup plays the ending.
+      if (e.type === 'itemRevealed' && e.content.kind === 'legendary') this.music.silence(true);
+      if (e.type === 'legendary') void this.playEnding(e.idx);
       // Short delays let the triggering animation play before a modal interrupts.
       if (e.type === 'outOfEnergy') setTimeout(() => this.showOutOfEnergy(), 350);
       if (e.type === 'perkOffer') setTimeout(() => this.showPerkPicker(), 250);
@@ -695,6 +702,25 @@ export class App {
     const { profile, newBest } = applyRunResult(this.profile, summary);
     this.setProfile(profile);
     this.showSummary(summary, newBest, { fanfare: true });
+  }
+
+  /** The game's ending (see `playEnding`). The game is over: progress resets and the player is back on the hub. */
+  private async playEnding(idx: number) {
+    const run = this.run;
+    if (!run) return;
+    let stopSong = () => {};
+    await playEnding({
+      from: this.renderer.cellClientCenter(run.floor, idx),
+      size: this.renderer.cellPixels(run.floor) * 0.7,
+      reducedMotion: this.renderer.reducedMotion,
+      onSong: () => (stopSong = this.music.victory()),
+      hint: t('ending.hint'),
+    });
+    stopSong();
+    this.run = undefined;
+    // Like "Reset progress": device settings (sound, language) stay.
+    this.profile = this.store.reset();
+    this.showHub();
   }
 
   private showSummary(s: RunSummary, newBest: boolean, opts: { adFailed?: boolean; fanfare?: boolean } = {}) {

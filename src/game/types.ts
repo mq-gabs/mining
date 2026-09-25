@@ -25,7 +25,9 @@ export type Content =
   | { kind: 'caveIn' }
   /** Stays in the open cell after the break (like stairs) and takes gems on each tap. */
   | { kind: 'hole' }
-  | { kind: 'stairs' };
+  | { kind: 'stairs' }
+  /** The goal: only on `CONFIG.goal.depth`, in place of the stairs. Picking it up wins the game. */
+  | { kind: 'legendary' };
 
 export type ContentKind = Content['kind'];
 
@@ -68,8 +70,8 @@ export interface RunModifiers {
   toolCharges: Record<ToolId, number>;
 }
 
-export type RunStatus = 'playing' | 'choosingPerk' | 'outOfEnergy' | 'ended';
-export type EndReason = 'left' | 'exhausted';
+export type RunStatus = 'playing' | 'choosingPerk' | 'outOfEnergy' | 'won' | 'ended';
+export type EndReason = 'left' | 'exhausted' | 'won';
 export type PerkOfferSource = 'floor' | 'chest';
 
 /** An active Rush, and what it has earned so far (for the end-of-Rush float). */
@@ -129,6 +131,8 @@ export type RunEvent =
   /** A hole took gems: on the break, or on a tap of the hole left in the open cell. */
   | { type: 'hole'; idx: number; gemsLost: number }
   | { type: 'stairsRevealed'; idx: number }
+  /** The Legendary Diamond was picked up: the game is won (status 'won'). */
+  | { type: 'legendary'; idx: number }
   | { type: 'tool'; tool: ToolId; idx: number; cells: number[] }
   | { type: 'descend'; depth: number; energyRestored: number }
   /** `idx`: the chest cell, for a chest offer. */

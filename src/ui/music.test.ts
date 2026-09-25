@@ -67,3 +67,10 @@ describe('sound settings', () => {
     expect(parseSettings({ muted: true }).musicVolume).toBe(M.defaultVolume.music);
   });
 });
+
+describe('victory song', () => {
+  it('each part has a melody and chords of the same length, so the loop stays in time', () => {
+    const beats = (notes: [unknown, number][]) => notes.reduce((sum, [, b]) => sum + b, 0);
+    for (const part of [M.victory.intro, M.victory.loop]) expect(beats(part.melody)).toBe(beats(part.chords));
+  });
+});

@@ -126,7 +126,6 @@ export const ptBR: Record<MessageKey, string> = {
   'gem.amethyst': 'Ametista',
   'gem.sapphire': 'Safira',
   'gem.ruby': 'Rubi',
-  'gem.diamond': 'Diamante',
 
   // Clean floor bonus
   'clean.title': '🧹 Bônus de andar limpo',
@@ -157,6 +156,7 @@ export const ptBR: Record<MessageKey, string> = {
   // Run summary
   'summary.newBest': 'Novo recorde de profundidade!',
   'summary.titleLeft': 'De volta à superfície',
+  'ending.hint': 'Toque para continuar',
   'summary.titleExhausted': 'Resgate',
   'summary.depth': 'Profundidade alcançada',
   'summary.depthValue': 'Andar {n}',

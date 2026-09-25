@@ -68,12 +68,18 @@ function begin(prev: RunState): Ctx {
 
 function finish(ctx: Ctx): ActionResult {
   ctx.run.rngState = ctx.rng.state;
-  // Taps are free during a Rush, so running dry only counts once it ends (see `tickRun`).
-  if (ctx.run.status === 'playing' && ctx.run.energy <= 0 && !ctx.run.rush) {
+  // Taps are free during a Rush, so running dry only counts once it ends (see `tickRun`). A revealed
+  // Legendary Diamond can still be picked up (free), so the run waits for it.
+  if (ctx.run.status === 'playing' && ctx.run.energy <= 0 && !ctx.run.rush && !legendaryLying(ctx.run.floor)) {
     ctx.run.status = 'outOfEnergy';
     ctx.events.push({ type: 'outOfEnergy' });
   }
   return { run: ctx.run, events: ctx.events };
+}
+
+/** The Legendary Diamond lies revealed in an open cell, waiting to be picked up. */
+export function legendaryLying(floor: Floor): boolean {
+  return floor.cells.some((c) => c.open && c.content.kind === 'legendary');
 }
 
 /** What happens when the player taps cell `idx` with the pickaxe. Returns a new state. */
@@ -263,9 +269,9 @@ function openBlock(ctx: Ctx, idx: number, opts: BreakOptions) {
     case 'caveIn': {
       const candidates = neighbors8(run.floor, idx).filter((n) => {
         const c = run.floor.cells[n];
-        // Items lying in these cells are destroyed with them. Stairs and holes stay.
+        // Items lying in these cells are destroyed with them. Stairs, holes and the Legendary Diamond stay.
         const kind = c.content.kind;
-        return c.open && n !== run.floor.entrance && kind !== 'stairs' && kind !== 'hole';
+        return c.open && n !== run.floor.entrance && kind !== 'stairs' && kind !== 'hole' && kind !== 'legendary';
       });
       const filled: number[] = [];
       while (filled.length < CONFIG.hazards.caveInCells && candidates.length > 0) {
@@ -290,9 +296,12 @@ function openBlock(ctx: Ctx, idx: number, opts: BreakOptions) {
   if (opts.source === 'pickaxe') addMomentum(ctx, idx, momentumFill(run, block));
 }
 
-/** Gems, crystals and chests: revealed by a break, then picked up with a tap. */
-export function isCollectible(content: Content): content is Extract<Content, { kind: 'gem' | 'crystal' | 'chest' }> {
-  return content.kind === 'gem' || content.kind === 'crystal' || content.kind === 'chest';
+/** Gems, crystals, chests and the Legendary Diamond: revealed by a break, then picked up with a tap. */
+export function isCollectible(
+  content: Content,
+): content is Extract<Content, { kind: 'gem' | 'crystal' | 'chest' | 'legendary' }> {
+  const kind = content.kind;
+  return kind === 'gem' || kind === 'crystal' || kind === 'chest' || kind === 'legendary';
 }
 
 /**
@@ -332,6 +341,11 @@ export function collect(prev: RunState, idx: number): ActionResult {
       events.push({ type: 'chest', idx, gems });
       break;
     }
+    case 'legendary':
+      // The goal: the game is won. The run stops here (the UI plays the ending, then calls `endRun`).
+      run.status = 'won';
+      events.push({ type: 'legendary', idx });
+      break;
   }
   return finish(ctx);
 }

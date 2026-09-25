@@ -81,6 +81,9 @@ export class MusicEngine {
   /** Ambient layers (drone, pads, arp, drips, heartbeat) and the Rush track, crossfaded against each other. */
   private ambientBus?: GainNode;
   private rushBus?: GainNode;
+  /** Both tracks pass through it, so `silence` can fade all the background music out at once. */
+  private master?: GainNode;
+  private silenced = false;
   private bassFilter?: BiquadFilterNode;
   private dripIn?: GainNode;
   private heartbeatGain?: GainNode;
@@ -100,12 +103,15 @@ export class MusicEngine {
     const { ctx } = out;
     this.ctx = ctx;
 
+    this.master = ctx.createGain();
+    this.master.gain.value = this.silenced ? 0 : 1;
+    this.master.connect(out.out);
     this.ambientBus = ctx.createGain();
     this.ambientBus.gain.value = this.mood.rush ? 0 : 1;
-    this.ambientBus.connect(out.out);
+    this.ambientBus.connect(this.master);
     this.rushBus = ctx.createGain();
     this.rushBus.gain.value = this.mood.rush ? 1 : 0;
-    this.rushBus.connect(out.out);
+    this.rushBus.connect(this.master);
     this.bassFilter = ctx.createBiquadFilter();
     this.bassFilter.type = 'lowpass';
     this.bassFilter.frequency.value = M.rush.bass.cutoff;
@@ -163,6 +169,63 @@ export class MusicEngine {
       for (const o of old.oscs) o.stop(t + fade * 2);
       this.drone = this.makeDrone(next.root, t);
     }
+  }
+
+  /**
+   * Fades the background music out (`true`) or back in. Scene changes still happen underneath, so the
+   * right mood is playing when it comes back.
+   */
+  silence(on: boolean) {
+    this.silenced = on;
+    if (!this.ctx || !this.master) return;
+    const fade = on ? M.silenceFadeSec : M.crossfadeSec;
+    this.master.gain.setTargetAtTime(on ? 0 : 1, this.ctx.currentTime, fade / 3);
+  }
+
+  /**
+   * The victory song on the music bus, on its own fader (not the background music's, so it plays while the
+   * background is silenced): the intro once, then the loop until the returned `stop` fades it out.
+   */
+  victory(): () => void {
+    const out = this.synth.musicOutput();
+    if (!out || !this.started) return () => {};
+    const v = M.victory;
+    const { ctx } = out;
+    const bus = ctx.createGain();
+    bus.connect(out.out);
+    let timer = 0;
+    const loopStart = (t: number) => {
+      const end = this.victoryPart(bus, v.loop, t);
+      // Schedule the next round a second before this one ends (on the audio clock, so a pause just waits).
+      timer = window.setTimeout(() => loopStart(end), Math.max(0, (end - ctx.currentTime - 1) * 1000));
+    };
+    loopStart(this.victoryPart(bus, v.intro, ctx.currentTime + 0.05));
+    return () => {
+      clearTimeout(timer);
+      bus.gain.setTargetAtTime(0, ctx.currentTime, v.fadeOutSec / 3);
+      setTimeout(() => bus.disconnect(), v.fadeOutSec * 2000);
+    };
+  }
+
+  /** Schedules one part of the victory song from time `t`. Returns when it ends. */
+  private victoryPart(dest: AudioNode, part: (typeof M.victory)['intro'], t: number): number {
+    const v = M.victory;
+    const beat = 60 / v.bpm;
+    let at = t;
+    for (const [semi, beats] of part.melody) {
+      const freq = midiToHz(v.root + 12 + semi);
+      this.voice(dest, at, freq, beats * beat * 1.1, 'triangle', v.melodyGain, 0.02);
+      this.voice(dest, at, freq * 2, beats * beat * 0.6, 'sine', v.melodyGain * 0.25, 0.02);
+      at += beats * beat;
+    }
+    const end = at;
+    at = t;
+    for (const [semis, beats] of part.chords) {
+      for (const semi of semis) this.voice(dest, at, midiToHz(v.root + semi), beats * beat * 1.2, 'sine', v.chordGain, 0.08);
+      this.voice(dest, at, midiToHz(v.root - 12 + semis[0]), beats * beat * 1.2, 'triangle', v.chordGain * 1.2, 0.05);
+      at += beats * beat;
+    }
+    return end;
   }
 
   /** A short, hopeful chord (the perk screen). Not filtered, so it shines even on dark floors. */

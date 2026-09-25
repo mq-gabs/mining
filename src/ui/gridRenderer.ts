@@ -20,6 +20,7 @@ import {
   SPARKLE_COLOR,
   TREASURE_COLOR,
   TUNNEL_COLOR,
+  type GemLook,
 } from './theme';
 
 /** What the renderer needs beyond the floor itself. */
@@ -141,7 +142,7 @@ export class GridRenderer {
   private slide?: { from: Floor; view: DrawView; start: number };
   private lastDrawn?: { floor: Floor; view: DrawView };
   /** Honour the OS "reduce motion" setting: no screen shake or floor slide. */
-  private reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  readonly reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
   /** Rush palette state as last drawn, and when it last flipped (for the colour fade). */
   private rushOn = false;
   private rushFlipAt = -Infinity;
@@ -186,6 +187,12 @@ export class GridRenderer {
     const rect = this.canvas.getBoundingClientRect();
     const { x, y } = this.cellCenter(floor, idx);
     return { x: rect.left + x, y: rect.top + y };
+  }
+
+  /** A cell's size in CSS pixels. */
+  cellPixels(floor: Floor): number {
+    this.layout(floor);
+    return this.cellSize;
   }
 
   /** Center of a cell in canvas CSS pixels. */
@@ -296,6 +303,12 @@ export class GridRenderer {
           break;
         case 'itemRevealed': {
           const c = e.content;
+          if (c.kind === 'legendary') {
+            this.shake(now, 8);
+            this.ring(floor, e.idx, GEM_COLORS.legendary, now, 2.2);
+            this.burst(floor, e.idx, GEM_COLORS.legendary, now, { count: 24, speed: 200, size: 5, duration: 280, star: true, gravity: 0 });
+            break;
+          }
           const color = c.kind === 'gem' ? GEM_COLORS[c.tier] : c.kind === 'crystal' ? CRYSTAL_COLOR : TREASURE_COLOR;
           this.ring(floor, e.idx, color, now, 0.7);
           break;
@@ -521,6 +534,12 @@ export class GridRenderer {
       if (cell.open) this.drawOpen(floor, cell, idx, x, y, s, now);
       else this.drawBlock(floor, cell, idx, x, y, s, view, now, rushMix);
     });
+    // The Legendary Diamond's glow spills over the cells around it, so it's drawn after all of them.
+    const legendary = floor.cells.findIndex((c) => c.open && c.content.kind === 'legendary');
+    if (legendary >= 0) {
+      const { col, row } = toColRow(floor, legendary);
+      this.drawLegendary(this.originX + col * s, this.originY + row * s + offsetY, s, now);
+    }
   }
 
   private drawOpen(floor: Floor, cell: Cell, idx: number, x: number, y: number, s: number, now: number) {
@@ -536,6 +555,7 @@ export class GridRenderer {
       ctx.fillRect(x, y, s, s);
     }
 
+    // The Legendary Diamond is drawn on top of every cell (see `drawCells`).
     if (cell.content.kind === 'gem' || cell.content.kind === 'crystal' || cell.content.kind === 'chest') {
       this.drawItem(cell.content, idx, x, y, s, now);
     }
@@ -665,6 +685,35 @@ export class GridRenderer {
     ctx.globalAlpha = alpha;
   }
 
+  /** The Legendary Diamond lying in its cell: a big diamond with a pulsing glow and turning rays. */
+  private drawLegendary(x: number, y: number, s: number, now: number) {
+    const ctx = this.ctx;
+    const cx = x + s / 2;
+    const cy = y + s / 2;
+    const pulse = this.reducedMotion ? 0.5 : 0.5 + 0.5 * Math.sin(now / 300);
+    const glow = ctx.createRadialGradient(cx, cy, 1, cx, cy, s * 0.9);
+    glow.addColorStop(0, withAlpha(GEM_COLORS.legendary, 0.55 + pulse * 0.3));
+    glow.addColorStop(1, withAlpha(GEM_COLORS.legendary, 0));
+    ctx.fillStyle = glow;
+    ctx.fillRect(x - s * 0.4, y - s * 0.4, s * 1.8, s * 1.8);
+    if (!this.reducedMotion) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(now / 2000);
+      ctx.strokeStyle = withAlpha('#ffffff', 0.25 + pulse * 0.2);
+      ctx.lineWidth = Math.max(1.5, s * 0.03);
+      for (let i = 0; i < 8; i++) {
+        ctx.rotate(Math.PI / 4);
+        ctx.beginPath();
+        ctx.moveTo(s * 0.3, 0);
+        ctx.lineTo(s * 0.55, 0);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    drawGemIcon(ctx, 'legendary', cx, cy, s * 0.34);
+  }
+
   /** A hole in the floor of an open cell: a dark oval with a soft inner shadow and a lit far rim. Static. */
   private drawHole(x: number, y: number, s: number) {
     const ctx = this.ctx;
@@ -725,8 +774,8 @@ export class GridRenderer {
     const cy = by + bs / 2;
     const c = cell.content;
     if (c.kind === 'none') return;
-    if (c.kind === 'gem') {
-      drawGemIcon(ctx, c.tier, cx, cy, bs * 0.22);
+    if (c.kind === 'gem' || c.kind === 'legendary') {
+      drawGemIcon(ctx, c.kind === 'gem' ? c.tier : 'legendary', cx, cy, bs * (c.kind === 'gem' ? 0.22 : 0.3));
       return;
     }
     const icon = { crystal: '⚡', chest: '🧰', gas: '☁️', caveIn: '🪨', hole: '🕳️', stairs: '🪜' }[c.kind];
@@ -950,7 +999,7 @@ export class GridRenderer {
 }
 
 /** Draws the gem icon for `tier` centred at (cx, cy) with radius `r`. */
-function drawGemIcon(ctx: CanvasRenderingContext2D, tier: GemTier, cx: number, cy: number, r: number) {
+function drawGemIcon(ctx: CanvasRenderingContext2D, tier: GemLook, cx: number, cy: number, r: number) {
   const pts = GEM_SHAPES[tier];
   ctx.beginPath();
   pts.forEach(([px, py], i) => (i ? ctx.lineTo(cx + px * r, cy + py * r) : ctx.moveTo(cx + px * r, cy + py * r)));

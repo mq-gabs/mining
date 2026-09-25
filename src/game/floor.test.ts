@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONFIG } from '../config';
+import { CONFIG, GEM_TIERS } from '../config';
 import { blockWeightsForDepth, generateFloor, gemWeightsForDepth } from './floor';
 import { isMinable, toColRow } from './grid';
 
@@ -23,12 +23,15 @@ describe('generateFloor', () => {
     expect(f.cells.filter((c) => c.open)).toHaveLength(1);
   });
 
-  it('places exactly one stairs block, in the bottom rows', () => {
+  it('places exactly one stairs block (the Legendary Diamond on the goal floor), in the bottom rows', () => {
     for (const seed of seeds) {
-      const f = generateFloor(seed, 1 + (seed % 20));
+      const depth = 1 + (seed % CONFIG.goal.depth);
+      const f = generateFloor(seed, depth);
+      const kind = depth === CONFIG.goal.depth ? 'legendary' : 'stairs';
+      expect(f.cells.some((c) => c.content.kind === (kind === 'stairs' ? 'legendary' : 'stairs'))).toBe(false);
       const stairs = f.cells
         .map((c, i) => ({ c, i }))
-        .filter(({ c }) => c.content.kind === 'stairs');
+        .filter(({ c }) => c.content.kind === kind);
       expect(stairs).toHaveLength(1);
       const { row } = toColRow(f, stairs[0].i);
       expect(row).toBeGreaterThanOrEqual(CONFIG.grid.rows - CONFIG.grid.stairsBottomRows);
@@ -90,6 +93,6 @@ describe('generateFloor', () => {
 
   it('gem tier weights unlock by depth', () => {
     expect(Object.keys(gemWeightsForDepth(1))).toEqual(['quartz']);
-    expect(Object.keys(gemWeightsForDepth(15))).toHaveLength(5);
+    expect(Object.keys(gemWeightsForDepth(CONFIG.gems.tiers.ruby.fromDepth))).toEqual(GEM_TIERS);
   });
 });

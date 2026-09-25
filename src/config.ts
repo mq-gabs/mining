@@ -1,7 +1,7 @@
 // All balance numbers live here. Tune freely; game logic reads from this file only.
 
 export type BlockType = 'dirt' | 'stone' | 'hard' | 'obsidian';
-export type GemTier = 'quartz' | 'amethyst' | 'sapphire' | 'ruby' | 'diamond';
+export type GemTier = 'quartz' | 'amethyst' | 'sapphire' | 'ruby';
 export type ToolId = 'dynamite' | 'drill' | 'scanner';
 export type UpgradeId =
   | 'power'
@@ -30,9 +30,12 @@ export const CONFIG = {
   grid: {
     cols: 7,
     rows: 9,
-    /** Stairs are placed somewhere in the bottom N rows. */
+    /** Stairs (and the Legendary Diamond, on the goal floor) are placed somewhere in the bottom N rows. */
     stairsBottomRows: 4,
   },
+
+  /** The game's goal: the Legendary Diamond lies on this floor, in place of the stairs. Picking it up wins. */
+  goal: { depth: 12 },
 
   energy: {
     start: 50,
@@ -77,21 +80,18 @@ export const CONFIG = {
       amethyst: { value: 5, fromDepth: 3 },
       sapphire: { value: 20, fromDepth: 6 },
       ruby: { value: 60, fromDepth: 10 },
-      diamond: { value: 200, fromDepth: 15 },
     } satisfies Record<GemTier, { value: number; fromDepth: number }>,
     /**
      * Which tier a gem is, per depth range (like `blockMix`). The last entry whose `fromDepth` <= depth
      * applies. Relative weights; tiers not yet unlocked (see `tiers.fromDepth`) are ignored.
      */
     tierMix: [
-      { fromDepth: 1, weights: { quartz: 100, amethyst: 0, sapphire: 0, ruby: 0, diamond: 0 } },
-      { fromDepth: 3, weights: { quartz: 72, amethyst: 28, sapphire: 0, ruby: 0, diamond: 0 } },
-      { fromDepth: 6, weights: { quartz: 66, amethyst: 28, sapphire: 6, ruby: 0, diamond: 0 } },
-      { fromDepth: 8, weights: { quartz: 60, amethyst: 32, sapphire: 8, ruby: 0, diamond: 0 } },
-      { fromDepth: 10, weights: { quartz: 55, amethyst: 32, sapphire: 10, ruby: 3, diamond: 0 } },
-      { fromDepth: 13, weights: { quartz: 48, amethyst: 32, sapphire: 14, ruby: 6, diamond: 0 } },
-      { fromDepth: 15, weights: { quartz: 40, amethyst: 32, sapphire: 17, ruby: 8, diamond: 3 } },
-      { fromDepth: 20, weights: { quartz: 30, amethyst: 30, sapphire: 22, ruby: 12, diamond: 6 } },
+      { fromDepth: 1, weights: { quartz: 100, amethyst: 0, sapphire: 0, ruby: 0 } },
+      { fromDepth: 3, weights: { quartz: 72, amethyst: 28, sapphire: 0, ruby: 0 } },
+      { fromDepth: 6, weights: { quartz: 66, amethyst: 28, sapphire: 6, ruby: 0 } },
+      { fromDepth: 8, weights: { quartz: 60, amethyst: 32, sapphire: 8, ruby: 0 } },
+      { fromDepth: 10, weights: { quartz: 55, amethyst: 32, sapphire: 10, ruby: 3 } },
+      { fromDepth: 13, weights: { quartz: 48, amethyst: 32, sapphire: 14, ruby: 6 } },
     ] satisfies { fromDepth: number; weights: Record<GemTier, number> }[],
   },
 
@@ -231,6 +231,36 @@ export const CONFIG = {
     },
     /** Hopeful chord on the perk screen: the relative major triad (+3 semitones) with its octave. */
     perkChord: { gain: 0.12, durSec: 2.2, semitones: [3, 7, 10, 15] },
+    /** Revealing the Legendary Diamond fades the background music out over this many seconds. */
+    silenceFadeSec: 0.4,
+    /**
+     * The victory song (the ending), in a major key: a fanfare `intro` once, then a calm `loop` (I–vi–IV–V) that
+     * repeats until the player taps, and fades out over `fadeOutSec`. `melody` and `chords` are played in
+     * sequence: [semitones above `root`, length in beats]. In each part both add up to the same length.
+     */
+    victory: {
+      root: 60,
+      bpm: 92,
+      melodyGain: 0.2,
+      chordGain: 0.07,
+      fadeOutSec: 1,
+      intro: {
+        melody: [[0, 0.5], [4, 0.5], [7, 0.5], [12, 1], [7, 0.5], [12, 0.5], [16, 2], [14, 0.5], [16, 0.5], [19, 1.5]],
+        chords: [[[0, 4, 7], 2], [[5, 9, 12], 2], [[7, 11, 14], 2], [[0, 4, 7, 12], 2]],
+      },
+      loop: {
+        melody: [[12, 1], [11, 0.5], [9, 0.5], [7, 2], [9, 1], [11, 1], [12, 2], [14, 1], [12, 0.5], [11, 0.5], [9, 2], [7, 1], [4, 1], [7, 2]],
+        chords: [[[0, 4, 7], 4], [[-3, 0, 4], 4], [[5, 9, 12], 4], [[7, 11, 14], 4]],
+      },
+    } as {
+      root: number;
+      bpm: number;
+      melodyGain: number;
+      chordGain: number;
+      fadeOutSec: number;
+      intro: VictoryPart;
+      loop: VictoryPart;
+    },
   },
 
   /** Ad rewards and pacing (only when the `ads` feature flag is on; see `src/flags.ts`). */
@@ -291,7 +321,13 @@ export const CONFIG = {
 } as const;
 
 export const BLOCK_TYPES: BlockType[] = ['dirt', 'stone', 'hard', 'obsidian'];
-export const GEM_TIERS: GemTier[] = ['quartz', 'amethyst', 'sapphire', 'ruby', 'diamond'];
+/** One part of the victory song: [semitones, beats] notes, and [semitones[], beats] chords, played in sequence. */
+interface VictoryPart {
+  melody: [number, number][];
+  chords: [number[], number][];
+}
+
+export const GEM_TIERS: GemTier[] = ['quartz', 'amethyst', 'sapphire', 'ruby'];
 export const UPGRADE_IDS: UpgradeId[] = [
   'power',
   'energy',
