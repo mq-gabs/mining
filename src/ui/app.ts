@@ -33,7 +33,8 @@ import { ProfileStore, SettingsStore, type Settings } from '../platform/storage'
 import { flyGem, replayClass, showBanner } from './fx';
 import { GridRenderer, type DrawView } from './gridRenderer';
 import { installDevPanel } from './devPanel';
-import { playEnding, playFailure } from './ending';
+import { playEnding, playFailure, playRunIntro } from './ending';
+import { renderHowToPlay } from './howToPlay';
 import { hideModal, isModalOpen, showModal, type ModalAction } from './modal';
 import { renderShop } from './shop';
 import { MusicEngine } from './music';
@@ -52,6 +53,9 @@ const MOMENTUM_HOT = 0.8;
 /** Longest frame the Rush clock takes in one step, so a hitch doesn't drain the meter in a jump. */
 const MAX_TICK_MS = 100;
 
+const SCREENS = ['menu', 'help', 'hub', 'run'] as const;
+type Screen = (typeof SCREENS)[number];
+
 export class App {
   private store = new ProfileStore();
   private settings = new SettingsStore();
@@ -68,12 +72,17 @@ export class App {
   private renderer: GridRenderer;
   private rafId = 0;
   private lastFrame = 0;
+  private screen: Screen = 'menu';
+  /** A run's intro is playing (a second tap on Start mustn't start another). */
+  private starting = false;
   /** A `?seed=123` URL param forces the first run's seed (for reproducing bugs). */
   private forcedSeed = parseSeedParam();
 
   constructor() {
     this.renderer = new GridRenderer($<HTMLCanvasElement>('grid'), $('grid-wrap'));
-    $('btn-start').addEventListener('click', () => this.startRun());
+    $('btn-start').addEventListener('click', () => void this.startRun());
+    $('btn-new-game').addEventListener('click', () => void this.startRun());
+    $('btn-how-to').addEventListener('click', () => this.showHelp());
     $('btn-leave').addEventListener('click', () => this.confirmLeave());
     $('btn-reset').addEventListener('click', () => this.confirmReset());
     $('grid').addEventListener('pointerdown', (e) => this.onGridPointer(e));
@@ -82,7 +91,7 @@ export class App {
     $('hud-gems').addEventListener('click', () => this.showGemBreakdown());
     $('tool-bar').addEventListener('click', (e) => this.onToolButton(e));
     for (const btn of document.querySelectorAll('[data-mute]')) btn.addEventListener('click', () => this.toggleMute());
-    $('btn-settings').addEventListener('click', () => this.showSettings());
+    for (const btn of document.querySelectorAll('[data-settings]')) btn.addEventListener('click', () => this.showSettings());
     // Audio can only start from a user gesture: the first tap starts the music, every tap keeps it running.
     document.addEventListener('pointerdown', () => this.unlockAudio(), { capture: true });
     document.addEventListener('keydown', () => this.unlockAudio(), { capture: true });
@@ -98,7 +107,9 @@ export class App {
     // Try to start the menu music right away. Browsers only allow this when autoplay is permitted
     // (e.g. the player has used the site before); otherwise it starts on the first tap or key press.
     this.unlockAudio();
-    this.showHub();
+    // A new game starts on the main menu; a game in progress goes straight to the hub.
+    if (this.profile.runsCompleted === 0) this.showMenu();
+    else this.showHub();
     if (import.meta.env.DEV) this.exposeDebugHook();
     if (isEnabled('devTools')) installDevPanel({ sounds: this.sounds, previewGas: (p) => this.previewGas(p) });
   }
@@ -176,6 +187,7 @@ export class App {
     this.applyLocale();
     this.renderMute();
     if (this.run) this.updateHud();
+    else if (this.screen === 'menu') this.renderMenu();
     else this.renderHub();
     this.showSettings();
   }
@@ -203,7 +215,10 @@ export class App {
          </label>
        </div>
        ${s.muted ? `<p class="muted-note">${t('sound.mutedNote')}</p>` : ''}`,
-      [{ label: t('common.done'), primary: true, onClick: () => {} }],
+      [
+        { label: t('menu.howTo'), onClick: () => this.showHelp() },
+        { label: t('common.done'), primary: true, onClick: () => {} },
+      ],
     );
     $<HTMLSelectElement>('language').addEventListener('change', (e) => {
       this.changeLanguage((e.target as HTMLSelectElement).value as Locale);
@@ -232,13 +247,41 @@ export class App {
 
   // ---------- Screens ----------
 
-  private showHub() {
+  /** Shows one screen and hides the others. */
+  private showScreen(screen: Screen) {
+    this.screen = screen;
+    for (const s of SCREENS) $(`screen-${s}`).hidden = s !== screen;
+  }
+
+  /** Off the run screen: stop drawing the grid, and play the surface music (after any ending's silence). */
+  private leaveRunScreen() {
     cancelAnimationFrame(this.rafId);
-    $('screen-run').hidden = true;
-    $('screen-hub').hidden = false;
     this.music.setScene({ scene: 'hub' });
     // Back from the Legendary Diamond's silence (the ending, or leaving without picking it up).
     this.music.silence(false);
+  }
+
+  /** The main menu: shown before a new game's first run. */
+  private showMenu() {
+    this.leaveRunScreen();
+    this.showScreen('menu');
+    this.renderMenu();
+  }
+
+  private renderMenu() {
+    $('menu-diamond').innerHTML = gemIconSvg('legendary', 88);
+  }
+
+  /** How to play, from the menu or the hub (via settings); it goes back where it came from. */
+  private showHelp() {
+    const back = this.screen === 'hub' ? () => this.showHub() : () => this.showMenu();
+    this.showScreen('help');
+    renderHowToPlay($('screen-help'), back);
+  }
+
+  private showHub() {
+    this.leaveRunScreen();
+    this.showScreen('hub');
     this.renderHub();
   }
 
@@ -267,29 +310,39 @@ export class App {
         label: t('reset.confirm'),
         className: 'danger',
         onClick: () => {
+          // A new game starts on the main menu.
           this.profile = this.store.reset();
-          this.renderHub();
+          this.showMenu();
         },
       },
       { label: t('common.cancel'), onClick: () => {} },
     ]);
   }
 
-  private startRun() {
+  /** Starts a run: the "Run 3 of 10" intro fades in and out, and the run's screen is set up behind it. */
+  private async startRun() {
+    if (this.starting || this.run) return;
+    this.starting = true;
     const seed = this.forcedSeed ?? randomSeed();
     this.forcedSeed = undefined;
     console.info(`[deep-dig] run seed ${seed}`);
-    $('screen-hub').hidden = true;
-    $('screen-run').hidden = false;
-    this.armed = undefined;
-    // A banner left with its `show` class would replay its animation when the run screen is shown again.
-    for (const id of ['floor-banner', 'rush-banner']) {
-      $(id).classList.remove('show', 'long');
-      $(id).hidden = true;
-    }
-    this.setRun(createRun(seed, modifiersFromProfile(this.profile)));
-    this.lastFrame = performance.now();
-    this.loop(this.lastFrame);
+    await playRunIntro({
+      title: t('intro.run', { n: this.profile.runsCompleted + 1, total: CONFIG.goal.maxRuns }),
+      subtitle: isLastRun(this.profile) ? t('intro.last') : '',
+      onBlack: () => {
+        this.showScreen('run');
+        this.armed = undefined;
+        // A banner left with its `show` class would replay its animation when the run screen is shown again.
+        for (const id of ['floor-banner', 'rush-banner']) {
+          $(id).classList.remove('show', 'long');
+          $(id).hidden = true;
+        }
+        this.setRun(createRun(seed, modifiersFromProfile(this.profile)));
+        this.lastFrame = performance.now();
+        this.loop(this.lastFrame);
+      },
+    });
+    this.starting = false;
     showBanner($('floor-banner'), t('banner.floor', { n: 1 }));
   }
 
@@ -723,7 +776,7 @@ export class App {
     stopSong();
     this.run = undefined;
     this.profile = this.store.reset();
-    this.showHub();
+    this.showMenu();
   }
 
   /** The game's ending (see `playEnding`). The game is over: progress resets and the player is back on the hub. */
@@ -742,7 +795,7 @@ export class App {
     this.run = undefined;
     // Like "Reset progress": device settings (sound, language) stay.
     this.profile = this.store.reset();
-    this.showHub();
+    this.showMenu();
   }
 
   private showSummary(s: RunSummary, newBest: boolean, opts: { adFailed?: boolean; fanfare?: boolean } = {}) {

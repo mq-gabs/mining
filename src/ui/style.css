@@ -171,7 +171,8 @@ body {
   margin: 12px 0 0 !important;
   font-size: 13px;
 }
-.hub h1 {
+.hub h1,
+.menu .logo {
   margin: 0;
   font-size: 34px;
   font-weight: 900;
@@ -1210,4 +1211,569 @@ body {
   50% {
     filter: drop-shadow(0 0 8px var(--gem)) drop-shadow(0 0 28px rgba(159, 243, 255, 0.85));
   }
+}
+
+/* ---------- Main menu ---------- */
+.menu {
+  gap: 16px;
+}
+.menu-top {
+  display: flex;
+  justify-content: space-between;
+}
+.menu-hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+}
+.menu .logo {
+  font-size: 42px;
+}
+.menu-diamond {
+  margin: 28px 0 12px;
+  filter: drop-shadow(0 0 8px var(--gem)) drop-shadow(0 0 26px rgba(159, 243, 255, 0.55));
+  animation: menu-float 3.2s ease-in-out infinite;
+}
+.menu-diamond .gem-svg {
+  display: block;
+}
+@keyframes menu-float {
+  50% {
+    transform: translateY(-8px);
+  }
+}
+.menu-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ---------- How to play ---------- */
+.help {
+  gap: 12px;
+}
+.help-header {
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  text-align: center;
+}
+.help-header h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.help-count {
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.help-viewport {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+.help-track {
+  display: flex;
+  height: 100%;
+  transition: transform 280ms ease-out;
+}
+.help-slide {
+  flex: 0 0 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 8px;
+  overflow-y: auto;
+  text-align: center;
+}
+.help-visual {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 190px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.help-slide h3 {
+  margin: 8px 0 0;
+  font-size: 22px;
+  color: var(--accent);
+}
+.help-slide p {
+  max-width: 340px;
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.45;
+}
+.help-dots {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+}
+/* 24px dots inside a 44px-high tap area. */
+.help-dot {
+  width: 24px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.help-dot::before {
+  content: '';
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin: auto;
+  border-radius: 50%;
+  background: var(--muted);
+  opacity: 0.4;
+  transition: all 200ms;
+}
+.help-dot.active::before {
+  width: 18px;
+  border-radius: 4px;
+  background: var(--accent);
+  opacity: 1;
+}
+.help-nav {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 10px;
+}
+.help-nav .btn:disabled {
+  opacity: 0.4;
+}
+
+/* Slide illustrations (hv-*): tiles painted like the grid's blocks. */
+.hv-tile {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: linear-gradient(var(--top), var(--bottom));
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.12);
+}
+.hv-tile.big {
+  width: 56px;
+  height: 56px;
+}
+.hv-tile.small {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+}
+.hv-tile.open {
+  background: #1a1310;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+.hv-tile.entrance {
+  background: linear-gradient(rgba(255, 214, 150, 0.35), #1a1310);
+}
+.hv-tile.zone {
+  outline: 2px solid rgba(255, 207, 122, 0.55);
+  outline-offset: -2px;
+}
+.hv-grid {
+  display: grid;
+  gap: 4px;
+}
+.hv-grid.cols-3 {
+  grid-template-columns: repeat(3, auto);
+}
+.hv-grid.cols-5 {
+  grid-template-columns: repeat(5, auto);
+}
+.hv-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.hv-arrow {
+  color: var(--muted);
+  font-size: 20px;
+}
+.hv-chips {
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+.hv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  font-size: 14px;
+  font-weight: 700;
+}
+.hv-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.hv-block strong {
+  color: var(--text);
+  font-size: 14px;
+}
+.hv-blocks {
+  display: flex;
+  gap: 12px;
+}
+.hv-glow {
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 0 6px var(--c));
+}
+.hv-gain {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 18px;
+  font-weight: 800;
+}
+/* Sparkles and dust: the grid's hints. */
+.hv-sparkles {
+  position: absolute;
+  inset: 0;
+  color: var(--c);
+  font-size: 12px;
+  line-height: 1;
+}
+.hv-sparkles,
+.hv-sparkles i,
+.hv-sparkles b {
+  font-style: normal;
+  font-weight: normal;
+}
+.hv-sparkles {
+  padding: 8px 0 0 8px;
+  text-align: left;
+  animation: hv-twinkle 1.6s ease-in-out infinite;
+}
+.hv-sparkles i {
+  position: absolute;
+  right: 9px;
+  top: 20px;
+  font-size: 15px;
+}
+.hv-sparkles b {
+  position: absolute;
+  left: 18px;
+  bottom: 8px;
+  font-size: 10px;
+}
+.hv-dust {
+  position: absolute;
+  inset: 0;
+}
+.hv-dust i {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--c);
+  opacity: 0.7;
+  animation: hv-dust 2s ease-in-out infinite;
+}
+.hv-dust i:nth-child(1) { left: 12px; top: 14px; }
+.hv-dust i:nth-child(2) { left: 32px; top: 22px; animation-delay: 0.4s; }
+.hv-dust i:nth-child(3) { left: 20px; top: 36px; animation-delay: 0.8s; }
+.hv-dust i:nth-child(4) { left: 38px; top: 40px; animation-delay: 1.2s; }
+@keyframes hv-twinkle {
+  50% {
+    opacity: 0.45;
+  }
+}
+@keyframes hv-dust {
+  50% {
+    transform: translateY(-4px);
+    opacity: 0.3;
+  }
+}
+/* Goal: the shaft down to the diamond, and the runs. */
+.hv-goal {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+.hv-shaft {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.hv-floor {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 74px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+.hv-floor.dots {
+  background: none;
+}
+.hv-floor.goal {
+  height: 38px;
+  color: var(--gem);
+  background: rgba(159, 243, 255, 0.1);
+  box-shadow: 0 0 14px rgba(159, 243, 255, 0.35);
+}
+.hv-runs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+.hv-pips {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  font-size: 18px;
+}
+/* Dig: a finger taps a block, it shakes, energy ticks down. */
+.hv-dig {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.hv-finger {
+  position: absolute;
+  right: -10px;
+  bottom: -14px;
+  font-size: 26px;
+  animation: hv-tap 1.4s ease-in-out infinite;
+}
+.hv-hit {
+  /* Above the tiles after it, so the finger isn't covered. */
+  z-index: 1;
+  animation: hv-shake 1.4s ease-in-out infinite;
+}
+@keyframes hv-tap {
+  0%, 100% { transform: translate(6px, 6px); }
+  30% { transform: translate(0, 0) scale(0.9); }
+}
+@keyframes hv-shake {
+  30% { transform: translateX(-2px); }
+  36% { transform: translateX(2px); }
+  42% { transform: none; }
+}
+.hv-energy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hv-energy-bar {
+  width: 140px;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.hv-energy-bar i {
+  display: block;
+  height: 100%;
+  width: 80%;
+  background: var(--energy);
+  animation: hv-drain 1.4s steps(1) infinite;
+}
+@keyframes hv-drain {
+  30% { width: 76%; }
+}
+.hv-cost {
+  color: var(--danger);
+  font-weight: 800;
+  animation: hv-cost 1.4s ease-out infinite;
+}
+@keyframes hv-cost {
+  0%, 25% { opacity: 0; transform: translateY(4px); }
+  40% { opacity: 1; transform: none; }
+  90%, 100% { opacity: 0; transform: translateY(-6px); }
+}
+.hv-items {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.hv-hints .hv-row {
+  gap: 28px;
+}
+.hv-stairs {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.hv-ladder {
+  font-size: 18px;
+}
+.hv-zone-label {
+  color: #ffcf7a;
+  font-size: 13px;
+  font-weight: 700;
+  padding-bottom: 50px;
+}
+/* Leave vs running dry. */
+.hv-leave {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.hv-outcome {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hv-outcome strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 18px;
+}
+.hv-outcome.good strong {
+  color: #7be08a;
+}
+.hv-outcome.bad strong {
+  color: var(--danger);
+}
+.hv-btn {
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.hv-btn.dry {
+  color: var(--energy);
+}
+/* The shop. */
+.hv-shop {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 280px;
+}
+.hv-shop-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--panel-2);
+  text-align: left;
+  font-size: 14px;
+}
+.hv-shop-row em {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-style: normal;
+  color: var(--accent);
+  font-weight: 700;
+}
+/* Rush and perks. */
+.hv-rush {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.hv-meter {
+  width: 200px;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.hv-meter i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #d49a24, var(--accent), #fff1b8);
+  animation: hv-fill 2.4s ease-in infinite;
+}
+@keyframes hv-fill {
+  0% { width: 10%; }
+  70%, 100% { width: 100%; }
+}
+.hv-rush-label {
+  color: #ffd24a;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+.hv-perks {
+  display: flex;
+  gap: 8px;
+}
+.hv-perk {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 52px;
+  border-radius: 10px;
+  background: var(--panel-2);
+  border: 1px solid rgba(255, 201, 74, 0.4);
+  font-size: 22px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .menu-diamond,
+  .hv-sparkles,
+  .hv-dust i,
+  .hv-finger,
+  .hv-hit,
+  .hv-energy-bar i,
+  .hv-cost,
+  .hv-meter i {
+    animation: none;
+  }
+  .hv-cost {
+    opacity: 1;
+  }
+  .help-track {
+    transition: none;
+  }
+}
+
+/* ---------- Run intro ---------- */
+.intro-text {
+  text-align: center;
+}
+.intro-title {
+  margin: 0;
+  font-size: clamp(30px, 9vw, 48px);
+  font-weight: 800;
+  color: var(--text);
+}
+.intro-sub {
+  margin: 12px 0 0;
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 700;
 }

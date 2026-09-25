@@ -202,6 +202,21 @@ clear (a test checks it), or cleaning could pay for itself and runs would never 
   (about 2800). Gems kept swing ±30–50% between nearly identical settings, because careers compound, so
   compare depth and trends, not single gem numbers.
 
+## Screens
+
+`App.showScreen` switches between `menu`, `help`, `hub` and `run` (sections in `index.html`).
+
+- **Main menu** (`showMenu`): shown before a new game's first run (`runsCompleted === 0` on load) and after a
+  win, a loss or "Reset progress". The logo, the floating Legendary Diamond, "Start Game" (straight into
+  run 1) and "How to Play". Returning players start on the hub.
+- **How to play** (`ui/howToPlay.ts`): 9 slides (goal, digging, block hardness, two-step items, hints, stairs,
+  leaving, upgrades, Rush and perks). Each is a small illustration built from the game's own colors and icons
+  (`hv-*` classes), a title and a sentence or two. Every number comes from `CONFIG`. Swipe, the arrow keys, the
+  dots or the buttons move between slides. Also reachable from the ⚙️ dialog; it goes back where it came from.
+- **Run intro** (`playRunIntro`, `ui/ending.ts`): before every run, a fade to black, "Run 3 of 10" (plus a
+  warning on the last run), then a fade onto floor 1. The run is set up while the screen is black. A tap skips the
+  hold.
+
 ## Goal: the Legendary Diamond
 
 The game ends on floor `CONFIG.goal.depth` (12). That floor has no stairs: the Legendary Diamond (`{ kind: 'legendary' }`)

@@ -100,3 +100,42 @@ async function tapToContinue(overlay: HTMLElement, hint: HTMLElement): Promise<v
   hint.classList.add('show');
   await new Promise<void>((resolve) => overlay.addEventListener('pointerdown', () => resolve(), { once: true }));
 }
+
+/** Run intro timings (ms): shown before every run, so short. */
+const INTRO_FADE_MS = 450;
+const INTRO_TITLE_MS = 350;
+const INTRO_HOLD_MS = 1100;
+const INTRO_OUT_MS = 500;
+
+export interface RunIntroOptions {
+  title: string;
+  /** A second, smaller line (the last run's warning), or empty. */
+  subtitle: string;
+  /** Called once the screen is black: swap the screens underneath here. */
+  onBlack: () => void;
+}
+
+/**
+ * Before each run: the screen fades to black, "Run 3 of 10" fades in, then everything fades out onto the
+ * new run. A tap during the hold skips the rest of it.
+ */
+export async function playRunIntro(opts: RunIntroOptions): Promise<void> {
+  const overlay = document.createElement('div');
+  overlay.className = 'ending run-intro';
+  const title = document.createElement('div');
+  title.className = 'intro-text';
+  title.innerHTML = `<h1 class="intro-title">${opts.title}</h1>${opts.subtitle ? `<p class="intro-sub">${opts.subtitle}</p>` : ''}`;
+  title.style.opacity = '0';
+  overlay.append(title);
+  document.body.append(overlay);
+
+  await run(overlay, [{ opacity: 0 }, { opacity: 1 }], INTRO_FADE_MS);
+  opts.onBlack();
+  await run(title, [{ opacity: 0 }, { opacity: 1 }], INTRO_TITLE_MS);
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, INTRO_HOLD_MS);
+    overlay.addEventListener('pointerdown', () => (clearTimeout(timer), resolve()), { once: true });
+  });
+  await run(overlay, [{ opacity: 1 }, { opacity: 0 }], INTRO_OUT_MS);
+  overlay.remove();
+}
